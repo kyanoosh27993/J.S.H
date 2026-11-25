@@ -134,8 +134,13 @@ class _IntakePageState extends State<IntakePage> {
     // ۶) PDF رسید
     Uint8List? sig;
     try {
-      sig = await signatureController.toPngBytes();
-    } catch (_) {}
+      // تایم‌اوت محافظ — اگر رندر امضا گیر کرد، رسید با امضای خالی صادر می‌شود
+      sig = await signatureController
+          .toPngBytes()
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      sig = null;
+    }
     final shop = await SettingsRepo.all();
     final pdfPath = await PdfService.buildIntakeReceipt(
       shop: shop,
@@ -287,33 +292,41 @@ class _IntakePageState extends State<IntakePage> {
               ],
             ),
             _two(defect, 'عیب دستگاه اعلامی *', phoneState, 'وضعیت تلفنی دستگاه'),
-            // موعد
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: ShamsiDateField(
-                    label: 'تاریخ تحویل (شمسی) *',
-                    onChanged: (dt) => setState(() => pickedDue = dt),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: dueTime,
-                    items: [
-                      for (var h = 8; h <= 21; h++)
-                        DropdownMenuItem(
-                          value: '${h.toString().padLeft(2, '0')}:00',
-                          child: Text('ساعت ${toPersianDigits('${h.toString().padLeft(2, '0')}:00')}'),
-                        ),
-                    ],
-                    onChanged: (v) => setState(() => dueTime = v ?? '18:00'),
-                    decoration: const InputDecoration(labelText: 'ساعت تحویل'),
-                  ),
-                ),
-              ],
-            ),
+            // موعد — روی صفحه باریک گوشی زیر هم می‌رود (فاز ۳)
+            (() {
+              final narrow = MediaQuery.of(context).size.width < 480;
+              final dateField = ShamsiDateField(
+                label: 'تاریخ تحویل (شمسی) *',
+                controller: dueDateCtrl,
+                onChanged: (dt) => setState(() => pickedDue = dt),
+              );
+              final timeField = DropdownButtonFormField<String>(
+                initialValue: dueTime,
+                items: [
+                  for (var h = 8; h <= 21; h++)
+                    DropdownMenuItem(
+                      value: '${h.toString().padLeft(2, '0')}:00',
+                      child: Text('ساعت ${toPersianDigits('${h.toString().padLeft(2, '0')}:00')}'),
+                    ),
+                ],
+                onChanged: (v) => setState(() => dueTime = v ?? '18:00'),
+                decoration: const InputDecoration(labelText: 'ساعت تحویل'),
+              );
+              return narrow
+                  ? Column(children: [
+                      dateField,
+                      const SizedBox(height: 8),
+                      timeField,
+                    ])
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: dateField),
+                        const SizedBox(width: 10),
+                        Expanded(child: timeField),
+                      ],
+                    );
+            })(),
             const SizedBox(height: 12),
             // چک‌لیست لوازم
             const Text('لوازم همراه دستگاه:', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -350,14 +363,15 @@ class _IntakePageState extends State<IntakePage> {
               ),
               child: Signature(controller: signatureController),
             ),
-            Row(
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
               children: [
                 FilledButton.icon(
                   onPressed: _submit,
                   icon: const Icon(Icons.check_circle),
                   label: const Text('ثبت پذیرش و صدور رسید'),
                 ),
-                const SizedBox(width: 10),
                 TextButton(
                   onPressed: () => signatureController.clear(),
                   child: const Text('پاک کردن امضا'),
@@ -371,15 +385,19 @@ class _IntakePageState extends State<IntakePage> {
   }
 
   Widget _two(TextEditingController a, String la, TextEditingController b, String lb) {
+    // فاز ۳ (F-03): روی صفحه باریک گوشی، فیلدهای جفت زیر هم قرار می‌گیرند
+    final narrow = MediaQuery.of(context).size.width < 480;
+    final fa = TextField(controller: a, decoration: InputDecoration(labelText: la));
+    final fb = TextField(controller: b, decoration: InputDecoration(labelText: lb));
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Expanded(child: TextField(controller: a, decoration: InputDecoration(labelText: la))),
-          const SizedBox(width: 10),
-          Expanded(child: TextField(controller: b, decoration: InputDecoration(labelText: lb))),
-        ],
-      ),
+      child: narrow
+          ? Column(children: [fa, const SizedBox(height: 8), fb])
+          : Row(children: [
+              Expanded(child: fa),
+              const SizedBox(width: 10),
+              Expanded(child: fb),
+            ]),
     );
   }
 }

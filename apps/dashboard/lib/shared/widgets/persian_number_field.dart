@@ -1,6 +1,8 @@
 /// فیلد عدد فارسی — قاعده ۱: نمایش فارسی، ذخیره انگلیسی
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -35,24 +37,30 @@ class _PersianNumberFieldState extends State<PersianNumberField> {
   @override
   void initState() {
     super.initState();
-    // تبدیل مقدار اولیه انگلیسی به نمایش فارسی
-    if (widget.controller.text.isNotEmpty) {
-      final v = widget.controller.text;
-      widget.controller.text = toPersianDigits(toEnglishDigits(v));
+    // تبدیل مقدار اولیه انگلیسی به نمایش فارسی — در میکروتسک،
+    // چون نوشتن در کنترلر حین build باعث خطای setState می‌شود
+    final v = widget.controller.text;
+    if (v.isNotEmpty) {
+      scheduleMicrotask(() {
+        widget.controller.text = toPersianDigits(toEnglishDigits(v));
+      });
     }
     widget.controller.addListener(_onCtrl);
   }
 
   void _onCtrl() {
-    final v = widget.controller.text;
-    final en = toEnglishDigits(v);
-    final fa = toPersianDigits(en);
-    if (v != fa) {
-      widget.controller.value = TextEditingValue(
-        text: fa,
-        selection: TextSelection.collapsed(offset: fa.length),
-      );
-    }
+    // تعویق میکروتسکی — تغییر مقدار کنترلر حین build/نوتیفیکیشن ممنوع است
+    scheduleMicrotask(() {
+      final v = widget.controller.text;
+      final en = toEnglishDigits(v);
+      final fa = toPersianDigits(en);
+      if (v != fa) {
+        widget.controller.value = TextEditingValue(
+          text: fa,
+          selection: TextSelection.collapsed(offset: fa.length),
+        );
+      }
+    });
   }
 
   @override

@@ -1,9 +1,9 @@
 {
- "generated_at": "2026-11-25T20:31:41",
+ "generated_at": "2026-11-25T22:28:52",
  "stats": {
   "files": 48,
-  "loc": 10592,
-  "edges": 174
+  "loc": 10699,
+  "edges": 175
  },
  "modules": {
   "root": {
@@ -28,7 +28,7 @@
   },
   "core/services": {
    "files": 12,
-   "loc": 1878
+   "loc": 1924
   },
   "core/theme": {
    "files": 1,
@@ -68,7 +68,7 @@
   },
   "features/intake": {
    "files": 1,
-   "loc": 385
+   "loc": 403
   },
   "features/invoices": {
    "files": 1,
@@ -112,7 +112,7 @@
   },
   "shared/widgets": {
    "files": 7,
-   "loc": 1458
+   "loc": 1501
   }
  },
  "files": {
@@ -186,9 +186,10 @@
   "lib/core/services/calendar_export_service.dart": {
    "imports": [
     "lib/core/constants.dart",
-    "lib/core/repos.dart"
+    "lib/core/repos.dart",
+    "lib/core/utils.dart"
    ],
-   "loc": 72
+   "loc": 118
   },
   "lib/core/services/email_service.dart": {
    "imports": [
@@ -343,7 +344,7 @@
     "lib/shared/widgets/persian_number_field.dart",
     "lib/shared/widgets/shamsi_date_field.dart"
    ],
-   "loc": 385
+   "loc": 403
   },
   "lib/features/invoices/invoices.dart": {
    "imports": [
@@ -501,7 +502,7 @@
    "imports": [
     "lib/core/utils.dart"
    ],
-   "loc": 91
+   "loc": 99
   },
   "lib/shared/widgets/shamsi_calendar.dart": {
    "imports": [
@@ -515,7 +516,7 @@
     "lib/core/utils.dart",
     "lib/shared/widgets/shamsi_calendar.dart"
    ],
-   "loc": 117
+   "loc": 152
   },
   "lib/shared/widgets/smart_data_table.dart": {
    "imports": [
