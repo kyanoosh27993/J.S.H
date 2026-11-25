@@ -36,6 +36,20 @@ class PdfService {
     }
   }
 
+  /// حسابرسی (قاعده ۱۰): بایت‌های امضای خراب هرگز نباید PDF را کرش کنند —
+  /// فقط PNG یا JPEG معتبر پذیرفته می‌شود.
+  static pw.MemoryImage? _safeImage(Uint8List bytes) {
+    if (bytes.length < 8) return null;
+    final isPng = bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47;
+    final isJpeg = bytes[0] == 0xFF && bytes[1] == 0xD8;
+    if (!isPng && !isJpeg) return null;
+    try {
+      return pw.MemoryImage(bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// مسیر پوشه رسیدها
   static Future<String> receiptsDir() async {
     final docs = await getApplicationDocumentsDirectory();
@@ -85,6 +99,7 @@ class PdfService {
           ),
         );
 
+    final signatureImage = _safeImage(signatureBytes);
     doc.addPage(
       pw.MultiPage(
         textDirection: pw.TextDirection.rtl,
@@ -159,7 +174,8 @@ class PdfService {
             children: [
               pw.Column(children: [
                 if (signatureBytes.isNotEmpty)
-                  pw.Image(pw.MemoryImage(signatureBytes), width: 90, height: 36),
+                  if (signatureImage != null)
+                    pw.Image(signatureImage, width: 90, height: 36),
                 pw.Text('امضای مشتری',
                     style: pw.TextStyle(font: _regular, fontSize: 8)),
               ]),

@@ -9,6 +9,9 @@ import '../repos.dart';
 import 'email_service.dart';
 import 'install_report_service.dart';
 import 'license_service.dart';
+import 'backup_service.dart';
+import 'reminder_service.dart';
+import 'supervisor_service.dart';
 
 class AppSession {
   AppSession._();
@@ -28,6 +31,10 @@ class AppSession {
     // بیشینه سه مکان: فایل پنهان، رجیستری، پایگاه‌داده
     var count = state.installCount;
     if (fileCount > count) count = fileCount;
+    // ضد دستکاری: شمارنده هرگز زیر آینه خارجی نمی‌آید (قاعده ۱۲)
+    final mirror =
+        int.tryParse(await SettingsRepo.get('install_count_mirror')) ?? 0;
+    if (mirror > count) count = mirror;
     // اگر اثر انگشت پایگاه‌داده با این دستگاه فرق داشت یعنی کپی شد — همان شمارنده حفظ می‌شود
     state.installCount = count;
     state.fingerprint = fp;
@@ -35,7 +42,20 @@ class AppSession {
       state.firstRunAt = DateTime.now().toIso8601String();
     }
     await LicenseRepo.save(state);
+    await LicenseIntegrity.mirrorCount(count);
     license = state;
+
+    // ۱-ب) بررسی دستکاری لایسنس (قاعده ۱۲)
+    final integrity = await LicenseIntegrity.verify();
+    if (integrity != LicenseIntegrityResult.ok) {
+      locked = true;
+      lockReason = 'تشخیص دستکاری در اطلاعات لایسنس.\n'
+          'رکورد لایسنس با امضای امنیتی (HMAC) محافظت می‌شود و ویرایش دستی آن مجاز نیست.\n'
+          'برای رفع مشکل با پشتیبانی تماس بگیرید:\n'
+          '${VendorInfo.companyName} — ${VendorInfo.phoneDisplay} — ${VendorInfo.email}';
+      return;
+    }
+    await LicenseIntegrity.write();
 
     // ۲) قفل نصب چهارم (F-09)
     try {
@@ -46,8 +66,9 @@ class AppSession {
       return;
     }
 
-    // ۳) تنظیمات SMTP و فروشگاه
+    // ۳) تنظیمات SMTP و فروشگاه + پاک‌سازی بک‌آپ‌های اتوماتیک قدیمی (قاعده ۹)
     smtp = SmtpConfig.fromJson(await SettingsRepo.all());
+    await BackupService.cleanupAutoBackups();
   }
 
   GateState gateState() {
@@ -73,6 +94,7 @@ class AppSession {
           license.reportStatus = 'sent';
           license.reportSentAt = DateTime.now().toIso8601String();
           await LicenseRepo.save(license);
+          await LicenseIntegrity.write();
           if (!sent) await SettingsRepo.set('install_report_sent', '1');
         }
       } catch (_) {}
@@ -85,6 +107,7 @@ class AppSession {
           license.reportStatus = 'sent';
           license.reportSentAt = DateTime.now().toIso8601String();
           await LicenseRepo.save(license);
+          await LicenseIntegrity.write();
           await SettingsRepo.set('install_report_sent', '1');
         }
       } catch (_) {}
@@ -113,6 +136,10 @@ class AppSession {
     await SettingsRepo.set('reminder_lead_days', '$leadDays');
     await SettingsRepo.set('reminder_hour', '$hour');
     smtp = smtpCfg;
+    // حسابرسی (قاعده ۱۰): هم‌گام‌سازی یادآوری‌های در انتظار با تنظیم جدید
+    try {
+      await ReminderService.recomputePendingReminders(leadDays, hour);
+    } catch (_) {}
   }
 
   /// مقدارهای پیش‌پر اطلاعات فروشگاه از اطلاعات شرکت سازنده (N-02، موقت تا اصلاح)

@@ -1,0 +1,411 @@
+{
+ "generated_at": "2026-11-25T19:58:48",
+ "stats": {
+  "files": 37,
+  "loc": 7218,
+  "edges": 131
+ },
+ "modules": {
+  "root": {
+   "files": 2,
+   "loc": 186
+  },
+  "core/constants.dart": {
+   "files": 1,
+   "loc": 58
+  },
+  "core/db": {
+   "files": 1,
+   "loc": 197
+  },
+  "core/models.dart": {
+   "files": 1,
+   "loc": 353
+  },
+  "core/repos.dart": {
+   "files": 1,
+   "loc": 337
+  },
+  "core/services": {
+   "files": 10,
+   "loc": 1614
+  },
+  "core/utils.dart": {
+   "files": 1,
+   "loc": 86
+  },
+  "features/assistant": {
+   "files": 1,
+   "loc": 173
+  },
+  "features/board": {
+   "files": 1,
+   "loc": 173
+  },
+  "features/calendar": {
+   "files": 1,
+   "loc": 325
+  },
+  "features/customers": {
+   "files": 1,
+   "loc": 263
+  },
+  "features/dbmanager": {
+   "files": 2,
+   "loc": 572
+  },
+  "features/intake": {
+   "files": 1,
+   "loc": 385
+  },
+  "features/invoices": {
+   "files": 1,
+   "loc": 144
+  },
+  "features/onboarding": {
+   "files": 1,
+   "loc": 366
+  },
+  "features/reminders": {
+   "files": 1,
+   "loc": 152
+  },
+  "features/settings": {
+   "files": 1,
+   "loc": 184
+  },
+  "features/shell": {
+   "files": 1,
+   "loc": 382
+  },
+  "features/support": {
+   "files": 2,
+   "loc": 157
+  },
+  "features/tickets": {
+   "files": 1,
+   "loc": 295
+  },
+  "shared/data": {
+   "files": 1,
+   "loc": 53
+  },
+  "shared/widgets": {
+   "files": 4,
+   "loc": 763
+  }
+ },
+ "files": {
+  "lib/app.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/services/app_session.dart",
+    "lib/core/services/backup_service.dart",
+    "lib/core/services/install_report_service.dart",
+    "lib/core/services/reminder_service.dart",
+    "lib/features/onboarding/onboarding.dart",
+    "lib/features/shell/shell.dart",
+    "lib/features/support/blocked.dart"
+   ],
+   "loc": 175
+  },
+  "lib/core/constants.dart": {
+   "imports": [],
+   "loc": 58
+  },
+  "lib/core/db/db.dart": {
+   "imports": [],
+   "loc": 197
+  },
+  "lib/core/models.dart": {
+   "imports": [],
+   "loc": 353
+  },
+  "lib/core/repos.dart": {
+   "imports": [
+    "lib/core/db/db.dart",
+    "lib/core/models.dart"
+   ],
+   "loc": 337
+  },
+  "lib/core/services/app_session.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/email_service.dart",
+    "lib/core/services/install_report_service.dart",
+    "lib/core/services/license_service.dart",
+    "lib/core/services/backup_service.dart",
+    "lib/core/services/reminder_service.dart",
+    "lib/core/services/supervisor_service.dart"
+   ],
+   "loc": 155
+  },
+  "lib/core/services/assistant_service.dart": {
+   "imports": [
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/utils.dart",
+    "lib/core/services/backup_service.dart",
+    "lib/core/services/pdf_service.dart",
+    "lib/core/services/reminder_service.dart"
+   ],
+   "loc": 270
+  },
+  "lib/core/services/backup_service.dart": {
+   "imports": [
+    "lib/core/db/db.dart",
+    "lib/core/repos.dart"
+   ],
+   "loc": 163
+  },
+  "lib/core/services/calendar_export_service.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/repos.dart"
+   ],
+   "loc": 72
+  },
+  "lib/core/services/email_service.dart": {
+   "imports": [
+    "lib/core/repos.dart"
+   ],
+   "loc": 168
+  },
+  "lib/core/services/install_report_service.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/license_service.dart"
+   ],
+   "loc": 115
+  },
+  "lib/core/services/license_service.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/utils.dart"
+   ],
+   "loc": 165
+  },
+  "lib/core/services/pdf_service.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/models.dart",
+    "lib/core/utils.dart"
+   ],
+   "loc": 202
+  },
+  "lib/core/services/reminder_service.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/db/db.dart",
+    "lib/core/models.dart",
+    "lib/core/repos.dart"
+   ],
+   "loc": 162
+  },
+  "lib/core/services/supervisor_service.dart": {
+   "imports": [
+    "lib/core/db/db.dart",
+    "lib/core/repos.dart"
+   ],
+   "loc": 142
+  },
+  "lib/core/utils.dart": {
+   "imports": [],
+   "loc": 86
+  },
+  "lib/features/assistant/assistant_page.dart": {
+   "imports": [
+    "lib/core/services/assistant_service.dart"
+   ],
+   "loc": 173
+  },
+  "lib/features/board/board.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/utils.dart",
+    "lib/features/tickets/ticket_detail.dart"
+   ],
+   "loc": 173
+  },
+  "lib/features/calendar/calendar_page.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/calendar_export_service.dart",
+    "lib/core/utils.dart",
+    "lib/shared/data/holidays.dart",
+    "lib/features/tickets/ticket_detail.dart"
+   ],
+   "loc": 325
+  },
+  "lib/features/customers/customers.dart": {
+   "imports": [
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/utils.dart",
+    "lib/shared/widgets/smart_data_table.dart",
+    "lib/features/tickets/ticket_detail.dart"
+   ],
+   "loc": 263
+  },
+  "lib/features/dbmanager/db_manager_page.dart": {
+   "imports": [
+    "lib/core/services/backup_service.dart",
+    "lib/core/services/supervisor_service.dart",
+    "lib/core/utils.dart",
+    "lib/shared/widgets/smart_data_table.dart",
+    "lib/features/dbmanager/supervisor_gate.dart"
+   ],
+   "loc": 466
+  },
+  "lib/features/dbmanager/supervisor_gate.dart": {
+   "imports": [
+    "lib/core/services/supervisor_service.dart",
+    "lib/core/utils.dart"
+   ],
+   "loc": 106
+  },
+  "lib/features/intake/intake.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/email_service.dart",
+    "lib/core/services/pdf_service.dart",
+    "lib/core/services/reminder_service.dart",
+    "lib/core/utils.dart",
+    "lib/shared/widgets/persian_number_field.dart",
+    "lib/shared/widgets/shamsi_date_field.dart"
+   ],
+   "loc": 385
+  },
+  "lib/features/invoices/invoices.dart": {
+   "imports": [
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/utils.dart",
+    "lib/shared/widgets/smart_data_table.dart",
+    "lib/features/tickets/ticket_detail.dart"
+   ],
+   "loc": 144
+  },
+  "lib/features/onboarding/onboarding.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/app_session.dart",
+    "lib/core/services/email_service.dart",
+    "lib/core/services/install_report_service.dart",
+    "lib/core/services/license_service.dart",
+    "lib/core/utils.dart"
+   ],
+   "loc": 366
+  },
+  "lib/features/reminders/reminders.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/reminder_service.dart",
+    "lib/core/utils.dart",
+    "lib/features/tickets/ticket_detail.dart"
+   ],
+   "loc": 152
+  },
+  "lib/features/settings/settings.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/app_session.dart",
+    "lib/core/services/email_service.dart",
+    "lib/core/utils.dart"
+   ],
+   "loc": 184
+  },
+  "lib/features/shell/shell.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/app_session.dart",
+    "lib/core/utils.dart",
+    "lib/features/assistant/assistant_page.dart",
+    "lib/features/board/board.dart",
+    "lib/features/calendar/calendar_page.dart",
+    "lib/features/customers/customers.dart",
+    "lib/features/dbmanager/db_manager_page.dart",
+    "lib/features/invoices/invoices.dart",
+    "lib/features/intake/intake.dart",
+    "lib/features/reminders/reminders.dart",
+    "lib/features/settings/settings.dart",
+    "lib/features/support/support.dart"
+   ],
+   "loc": 382
+  },
+  "lib/features/support/blocked.dart": {
+   "imports": [
+    "lib/core/constants.dart"
+   ],
+   "loc": 78
+  },
+  "lib/features/support/support.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/utils.dart"
+   ],
+   "loc": 79
+  },
+  "lib/features/tickets/ticket_detail.dart": {
+   "imports": [
+    "lib/core/constants.dart",
+    "lib/core/models.dart",
+    "lib/core/repos.dart",
+    "lib/core/services/reminder_service.dart",
+    "lib/core/utils.dart"
+   ],
+   "loc": 295
+  },
+  "lib/main.dart": {
+   "imports": [
+    "lib/app.dart",
+    "lib/core/services/app_session.dart"
+   ],
+   "loc": 11
+  },
+  "lib/shared/data/holidays.dart": {
+   "imports": [],
+   "loc": 53
+  },
+  "lib/shared/widgets/persian_number_field.dart": {
+   "imports": [
+    "lib/core/utils.dart"
+   ],
+   "loc": 91
+  },
+  "lib/shared/widgets/shamsi_calendar.dart": {
+   "imports": [
+    "lib/core/utils.dart",
+    "lib/shared/data/holidays.dart"
+   ],
+   "loc": 256
+  },
+  "lib/shared/widgets/shamsi_date_field.dart": {
+   "imports": [
+    "lib/core/utils.dart",
+    "lib/shared/widgets/shamsi_calendar.dart"
+   ],
+   "loc": 117
+  },
+  "lib/shared/widgets/smart_data_table.dart": {
+   "imports": [
+    "lib/core/utils.dart"
+   ],
+   "loc": 299
+  }
+ }
+}

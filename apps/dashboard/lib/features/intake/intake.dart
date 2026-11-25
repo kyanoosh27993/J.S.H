@@ -14,6 +14,8 @@ import '../../core/services/email_service.dart';
 import '../../core/services/pdf_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
+import '../../shared/widgets/persian_number_field.dart';
+import '../../shared/widgets/shamsi_date_field.dart';
 
 class IntakePage extends StatefulWidget {
   const IntakePage({super.key});
@@ -40,6 +42,7 @@ class _IntakePageState extends State<IntakePage> {
   final dueDateCtrl = TextEditingController();
   String dueTime = '18:00';
   final accessories = <String>{};
+  DateTime? pickedDue;
   bool terms = false;
 
   final signatureController =
@@ -65,26 +68,13 @@ class _IntakePageState extends State<IntakePage> {
     if (mounted) setState(() => customers = l);
   }
 
-  Future<void> _pickDueDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: now.add(const Duration(days: 3)),
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
-    );
-    if (picked != null) {
-      setState(() => dueDateCtrl.text = shamsiDate(picked));
-    }
-  }
-
   Future<void> _submit() async {
     final errors = <String>[];
     if (dModel.text.trim().isEmpty) errors.add('مدل دستگاه');
     if (defect.text.trim().isEmpty) errors.add('عیب دستگاه');
     if (!newCustomer && selected == null) errors.add('انتخاب مشتری');
     if (newCustomer && cName.text.trim().isEmpty) errors.add('نام مشتری');
-    final due = parseShamsi(dueDateCtrl.text);
+    final due = pickedDue;
     if (due == null) errors.add('تاریخ تحویل (نمونه: ۱۴۰۵/۰۹/۱۰)');
     final estimateVal = int.tryParse(toEnglishDigits(estimate.text)) ?? 0;
     final depositVal = int.tryParse(toEnglishDigits(deposit.text)) ?? 0;
@@ -214,6 +204,7 @@ class _IntakePageState extends State<IntakePage> {
       }
       accessories.clear();
       terms = false;
+      pickedDue = null;
       dueTime = '18:00';
     });
   }
@@ -276,22 +267,34 @@ class _IntakePageState extends State<IntakePage> {
             const Divider(height: 24),
             // دستگاه
             _two(dModel, 'مدل دستگاه *', dSerial, 'شماره سریال / IMEI'),
-            _two(estimate, 'قیمت احتمالی (تومان)', deposit, 'بیعانه دریافتی (تومان)'),
-            _two(defect, 'عیب دستگاه اعلامی *', phoneState, 'وضعیت تلفنی دستگاه'),
-            // موعد
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: dueDateCtrl,
-                    readOnly: true,
-                    decoration: InputDecoration(
-                      labelText: 'تاریخ تحویل (شمسی) *',
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.calendar_month),
-                        onPressed: _pickDueDate,
-                      ),
-                    ),
+                  child: PersianNumberField(
+                    label: 'قیمت احتمالی (تومان)',
+                    controller: estimate,
+                    hint: '0',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: PersianNumberField(
+                    label: 'بیعانه دریافتی (تومان)',
+                    controller: deposit,
+                    hint: '0',
+                  ),
+                ),
+              ],
+            ),
+            _two(defect, 'عیب دستگاه اعلامی *', phoneState, 'وضعیت تلفنی دستگاه'),
+            // موعد
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: ShamsiDateField(
+                    label: 'تاریخ تحویل (شمسی) *',
+                    onChanged: (dt) => setState(() => pickedDue = dt),
                   ),
                 ),
                 const SizedBox(width: 10),

@@ -34,7 +34,7 @@ class _RemindersPageState extends State<RemindersPage> {
     final due = await TicketRepo.dueBetween(now, now.add(Duration(days: lead)));
     final out = <TodayTask>[];
     for (final t in due) {
-      out.add(await ReminderService.buildTask(t, lead));
+      out.add(await ReminderService.buildTask(t));
     }
     final pending = await ReminderRepo.pendingBefore(
         now.add(const Duration(days: 7)));
@@ -105,10 +105,16 @@ class _RemindersPageState extends State<RemindersPage> {
               Row(
                 children: [
                   Chip(
-                    backgroundColor: task.daysLeft <= 1 ? Colors.red.shade100 : Colors.amber.shade100,
-                    label: Text(task.daysLeft == 0
-                        ? 'امروز باید تحویل شود'
-                        : '${toPersianDigits('${task.daysLeft}')} روز تا موعد'),
+                    backgroundColor: task.daysLeft <= 1
+                        ? Colors.red.shade100
+                        : Colors.amber.shade100,
+                    label: Text(
+                      task.daysLeft == 0
+                          ? 'امروز باید تحویل شود'
+                          : task.daysLeft > 0
+                              ? '${toPersianDigits('${task.daysLeft}')} روز تا موعد'
+                              : '${toPersianDigits('${-task.daysLeft}')} روز از موعد گذشته',
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(

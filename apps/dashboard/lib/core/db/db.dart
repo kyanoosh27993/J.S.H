@@ -141,6 +141,12 @@ CREATE TABLE IF NOT EXISTS license_state (
   last_report_error TEXT DEFAULT '',
   hardware_report TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  action TEXT NOT NULL,
+  detail TEXT DEFAULT '',
+  created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_tickets_customer ON tickets(customer_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status, remind_at);
@@ -169,6 +175,15 @@ class Db {
   static Future<String> dbPath() async {
     final dir = await getApplicationSupportDirectory();
     return p.join(dir.path, 'jsh_dashboard.db');
+  }
+
+  /// بستن بانک برای بازیابی/جایگزینی فایل
+  static Future<void> reset() async {
+    final db = _db;
+    _db = null;
+    try {
+      await db?.close();
+    } catch (_) {}
   }
 
   /// پشتیبان دستی ساده به مسیر دلخواه (توسعه S-19 در فاز ۴)

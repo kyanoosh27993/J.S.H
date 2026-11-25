@@ -5,6 +5,7 @@ library;
 import 'dart:async';
 
 import '../constants.dart';
+import '../db/db.dart';
 import '../models.dart';
 import '../repos.dart';
 
@@ -46,10 +47,11 @@ class ReminderService {
     return added > 0 ? added : 0;
   }
 
-  static Future<TodayTask> buildTask(Ticket t, int leadDays) async {
-    final due = DateTime.parse('${t.dueDate.toIso8601String().substring(0, 10)}T${t.dueTime}:00');
-    final daysLeft =
-        due.difference(DateTime.now()).inDays.clamp(0, 365).toInt();
+  static Future<TodayTask> buildTask(Ticket t) async {
+    final due = DateTime.parse(
+        '${t.dueDate.toIso8601String().substring(0, 10)}T${t.dueTime}:00');
+    // حسابرسی (قاعده ۱۰): روزهای باقی‌مانده می‌تواند منفی باشد (موعد گذشته)
+    final daysLeft = due.difference(DateTime.now()).inDays;
     final added = await addedAmount(t);
     final items = await TicketItemRepo.byTicket(t.id!);
     final itemsSum = items.fold<int>(0, (s, i) => s + (i.price * i.qty));
@@ -130,5 +132,31 @@ class ReminderService {
           : ReminderPrefs.defaultLeadDays,
       hour.clamp(0, 23).toInt(),
     );
+  }
+
+  /// حسابرسی (قاعده ۱۰): تغییر تنظیمات یادآوری توسط کاربر باید یادآوری‌های
+  /// در انتظار سفارش‌های باز را هم با تنظیم جدید هم‌گام کند.
+  static Future<int> recomputePendingReminders(int leadDays, int hour) async {
+    final tickets = await TicketRepo.all();
+    var changed = 0;
+    for (final t in tickets) {
+      if (t.status == 'delivered' || t.id == null) continue;
+      final existing = await ReminderRepo.forTicket(t.id!);
+      if (existing == null || existing.status != 'pending') continue;
+      final dueFull = DateTime(
+        t.dueDate.year, t.dueDate.month, t.dueDate.day,
+        _parseHour(t.dueTime), _parseMinute(t.dueTime),
+      );
+      final remindAt = dueFull.subtract(Duration(days: leadDays));
+      final newTime =
+          DateTime(remindAt.year, remindAt.month, remindAt.day, hour, 0);
+      if (!newTime.isAtSameMomentAs(existing.remindAt)) {
+        final db = await Db.instance();
+        await db.update('reminders', {'remind_at': newTime.toIso8601String()},
+            where: 'id = ?', whereArgs: [existing.id]);
+        changed++;
+      }
+    }
+    return changed;
   }
 }

@@ -171,6 +171,16 @@ class TicketItemRepo {
     final db = await Db.instance();
     await db.delete('ticket_items', where: 'id = ?', whereArgs: [id]);
   }
+
+  /// جمع price*qty هر سفارش در یک کوئری — بهینه‌سازی عملکرد (قاعده ۱۱)
+  static Future<Map<int, int>> sumsForAllTickets() async {
+    final db = await Db.instance();
+    final rows = await db.rawQuery(
+        'SELECT ticket_id, COALESCE(SUM(price * qty), 0) AS s FROM ticket_items GROUP BY ticket_id');
+    return {
+      for (final r in rows) (r['ticket_id'] as int): (r['s'] as int),
+    };
+  }
 }
 
 class PaymentRepo {
@@ -192,6 +202,16 @@ class PaymentRepo {
         'SELECT COALESCE(SUM(amount), 0) AS s FROM payments WHERE ticket_id = ?',
         [ticketId]);
     return (rows.first['s'] ?? 0) as int;
+  }
+
+  /// تجمیع یک‌باره برای همه سفارش‌ها — بهینه‌سازی عملکرد (قاعده ۱۱)
+  static Future<Map<int, int>> paidSumForAll() async {
+    final db = await Db.instance();
+    final rows = await db.rawQuery(
+        'SELECT ticket_id, COALESCE(SUM(amount), 0) AS s FROM payments GROUP BY ticket_id');
+    return {
+      for (final r in rows) (r['ticket_id'] as int): (r['s'] as int),
+    };
   }
 }
 

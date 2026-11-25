@@ -25,11 +25,18 @@ dependencies:
   signature: ^5.5.0
   # اعلان دسکتاپ ویندوز
   local_notifier: ^0.1.6
+  # انتخاب پوشه بک‌آپ
+  file_selector: ^1.0.3
+
+dependency_overrides:
+  # image 4.11 به archive جدیدتر با decodeLazy نیاز دارد
+  archive: ^4.0.10
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  path_provider_platform_interface: ^2.1.0
 
 flutter:
   uses-material-design: true

@@ -2,12 +2,14 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:local_notifier/local_notifier.dart';
 
 import 'core/constants.dart';
 import 'core/services/app_session.dart';
+import 'core/services/backup_service.dart';
 import 'core/services/install_report_service.dart';
 import 'core/services/reminder_service.dart';
 import 'features/onboarding/onboarding.dart';
@@ -23,10 +25,27 @@ class JshDashboardApp extends StatefulWidget {
 }
 
 class _JshDashboardAppState extends State<JshDashboardApp> {
+  AppLifecycleListener? _lifecycle;
+
   @override
   void initState() {
     super.initState();
     _initDesktopNotifications();
+    // بک‌آپ اتوماتیک بی‌صدا هنگام خروج — قاعده ۹
+    if (!widget.session.locked) {
+      _lifecycle = AppLifecycleListener(
+        onExitRequested: () async {
+          await BackupService.autoBackup();
+          return AppExitResponse.exit;
+        },
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _lifecycle?.dispose();
+    super.dispose();
   }
 
   Future<void> _initDesktopNotifications() async {

@@ -1,4 +1,4 @@
-/// فاکتورها — نمایش فاکتور هر سفارش (تولید خودکار از اقلام + پرداخت‌ها)
+/// فاکتورها — جدول هوشمند سورت‌پذیر با جمع (قواعد ۵، ۶، ۱۱)
 library;
 
 import 'package:flutter/material.dart';
@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/utils.dart';
+import '../../shared/widgets/smart_data_table.dart';
 import '../tickets/ticket_detail.dart';
 
 class InvoicesPage extends StatefulWidget {
@@ -15,8 +16,19 @@ class InvoicesPage extends StatefulWidget {
   State<InvoicesPage> createState() => _InvoicesPageState();
 }
 
+class _InvoiceRow {
+  final Ticket ticket;
+  final String customerName;
+  final int total;
+  final int paid;
+  final int remaining;
+  _InvoiceRow(this.ticket, this.customerName, this.total, this.paid,
+      this.remaining);
+}
+
 class _InvoicesPageState extends State<InvoicesPage> {
-  List<Map<String, Object?>> rows = [];
+  List<_InvoiceRow> rows = [];
+  bool loading = true;
 
   @override
   void initState() {
@@ -26,22 +38,21 @@ class _InvoicesPageState extends State<InvoicesPage> {
 
   Future<void> _load() async {
     final tickets = await TicketRepo.all();
-    final out = <Map<String, Object?>>[];
+    final itemSums = await TicketItemRepo.sumsForAllTickets();
+    final paidSums = await PaymentRepo.paidSumForAll();
+    final out = <_InvoiceRow>[];
     for (final t in tickets) {
-      final items = await TicketItemRepo.byTicket(t.id!);
-      final itemsSum = items.fold<int>(0, (s, i) => s + i.price * i.qty);
-      final total = itemsSum > 0 ? itemsSum : t.estimateAmount;
-      final paid = await PaymentRepo.paidSum(t.id!);
       final c = await CustomerRepo.byId(t.customerId);
-      out.add({
-        'ticket': t,
-        'customer_name': c?.name ?? '-',
-        'total': total,
-        'paid': paid,
-        'remaining': total - paid,
-      });
+      final itemsSum = itemSums[t.id] ?? 0;
+      final total = itemsSum > 0 ? itemsSum : t.estimateAmount;
+      final paid = paidSums[t.id] ?? 0;
+      out.add(_InvoiceRow(t, c?.name ?? '-', total, paid, total - paid));
     }
-    if (mounted) setState(() => rows = out);
+    if (!mounted) return;
+    setState(() {
+      rows = out;
+      loading = false;
+    });
   }
 
   @override
@@ -53,39 +64,77 @@ class _InvoicesPageState extends State<InvoicesPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('فاکتورها و وضعیت پرداخت',
-                style: Theme.of(context).textTheme.titleLarge),
+            Row(
+              children: [
+                Text('فاکتورها و وضعیت پرداخت',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(width: 10),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() => loading = true);
+                    _load();
+                  },
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('به‌روزرسانی'),
+                ),
+              ],
+            ),
             const SizedBox(height: 10),
             Expanded(
-              child: rows.isEmpty
-                  ? const Center(child: Text('سفارشی ثبت نشده است'))
-                  : ListView.builder(
-                      itemCount: rows.length,
-                      itemBuilder: (_, i) {
-                        final r = rows[i];
-                        final t = r['ticket'] as Ticket;
-                        final rem = r['remaining'] as int;
-                        return Card(
-                          child: ListTile(
-                            onTap: () {
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : rows.isEmpty
+                      ? const Center(child: Text('سفارشی ثبت نشده است'))
+                      : SingleChildScrollView(
+                          child: SmartDataTable<_InvoiceRow>(
+                            rows: rows,
+                            searchIndex: (r) =>
+                                '${r.ticket.code} ${r.customerName}',
+                            onRowTap: (r) {
                               Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => TicketDetailPage(ticketId: t.id!),
+                                builder: (_) =>
+                                    TicketDetailPage(ticketId: r.ticket.id!),
                               ));
                             },
-                            title: Text('${r['customer_name']} — ${toPersianDigits(t.code)}'),
-                            subtitle: Text(
-                                'جمع: ${moneyToman(r['total'] as int)} — پرداخت‌شده: ${moneyToman(r['paid'] as int)}'),
-                            trailing: Text(
-                              rem > 0 ? 'بدهی: ${moneyToman(rem)}' : 'تسویه کامل',
-                              style: TextStyle(
-                                color: rem > 0 ? Colors.red : Colors.green,
-                                fontWeight: FontWeight.bold,
+                            columns: [
+                              SmartColumn<_InvoiceRow>(
+                                label: 'شماره سفارش',
+                                display: (r) => r.ticket.code,
+                                width: 150,
                               ),
-                            ),
+                              SmartColumn<_InvoiceRow>(
+                                label: 'مشتری',
+                                display: (r) => r.customerName,
+                                width: 170,
+                                filterable: true,
+                              ),
+                              SmartColumn<_InvoiceRow>(
+                                label: 'وضعیت',
+                                display: (r) => statusLabel(r.ticket.status),
+                                width: 110,
+                                filterable: true,
+                              ),
+                              SmartColumn<_InvoiceRow>(
+                                label: 'جمع فاکتور',
+                                display: (r) => money(r.total),
+                                width: 130,
+                                numeric: (r) => r.total,
+                              ),
+                              SmartColumn<_InvoiceRow>(
+                                label: 'پرداخت‌شده',
+                                display: (r) => money(r.paid),
+                                width: 130,
+                                numeric: (r) => r.paid,
+                              ),
+                              SmartColumn<_InvoiceRow>(
+                                label: 'باقیمانده',
+                                display: (r) => money(r.remaining),
+                                width: 130,
+                                numeric: (r) => r.remaining,
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                    ),
+                        ),
             ),
           ],
         ),

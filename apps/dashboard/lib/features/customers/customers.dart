@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/utils.dart';
+import '../../shared/widgets/smart_data_table.dart';
 import '../tickets/ticket_detail.dart';
 
 class CustomersPage extends StatefulWidget {
@@ -15,8 +16,13 @@ class CustomersPage extends StatefulWidget {
   State<CustomersPage> createState() => _CustomersPageState();
 }
 
+class _CustomerRow {
+  final Customer c;
+  _CustomerRow(this.c);
+}
+
 class _CustomersPageState extends State<CustomersPage> {
-  List<Customer> list = [];
+  List<_CustomerRow> list = [];
   String q = '';
 
   @override
@@ -27,7 +33,7 @@ class _CustomersPageState extends State<CustomersPage> {
 
   Future<void> _load() async {
     final l = await CustomerRepo.search(q);
-    if (mounted) setState(() => list = l);
+    if (mounted) setState(() => list = l.map(_CustomerRow.new).toList());
   }
 
   Future<void> _openEditor([Customer? c]) async {
@@ -72,29 +78,45 @@ class _CustomersPageState extends State<CustomersPage> {
             Expanded(
               child: list.isEmpty
                   ? const Center(child: Text('مشتری‌ای ثبت نشده است'))
-                  : ListView.builder(
-                      itemCount: list.length,
-                      itemBuilder: (_, i) {
-                        final c = list[i];
-                        return Card(
-                          child: ListTile(
-                            leading: CircleAvatar(child: Text(c.name.isNotEmpty ? c.name[0] : '?')),
-                            title: Text(c.name),
-                            subtitle: Text(
-                                '${toPersianDigits(c.phone)}   |   کد ملی: ${toPersianDigits(c.nationalId)}'
-                                '${c.tag.isEmpty ? '' : '   |   ${c.tag}'}'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _openEditor(c),
-                            ),
-                            onTap: () {
-                              Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => CustomerHistoryPage(customerId: c.id!),
-                              ));
-                            },
+                  : SingleChildScrollView(
+                      child: SmartDataTable<_CustomerRow>(
+                        rows: list,
+                        searchIndex: (r) =>
+                            '${r.c.name} ${r.c.phone} ${r.c.nationalId} ${r.c.tag}',
+                        onRowTap: (r) {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => CustomerHistoryPage(customerId: r.c.id!),
+                          ));
+                        },
+                        columns: [
+                          SmartColumn<_CustomerRow>(
+                            label: 'نام',
+                            display: (r) => r.c.name,
+                            width: 180,
                           ),
-                        );
-                      },
+                          SmartColumn<_CustomerRow>(
+                            label: 'تلفن',
+                            display: (r) => toPersianDigits(r.c.phone),
+                            width: 130,
+                          ),
+                          SmartColumn<_CustomerRow>(
+                            label: 'کد ملی',
+                            display: (r) => toPersianDigits(r.c.nationalId),
+                            width: 120,
+                          ),
+                          SmartColumn<_CustomerRow>(
+                            label: 'برچسب',
+                            display: (r) => r.c.tag.isEmpty ? '—' : r.c.tag,
+                            width: 130,
+                            filterable: true,
+                          ),
+                        ],
+                        rowAction: (r) => IconButton(
+                          tooltip: 'ویرایش',
+                          icon: const Icon(Icons.edit, size: 19),
+                          onPressed: () => _openEditor(r.c),
+                        ),
+                      ),
                     ),
             ),
           ],
