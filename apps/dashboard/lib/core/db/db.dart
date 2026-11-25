@@ -141,6 +141,15 @@ CREATE TABLE IF NOT EXISTS license_state (
   last_report_error TEXT DEFAULT '',
   hardware_report TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS warranty_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id INTEGER UNIQUE NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  months INTEGER NOT NULL DEFAULT 6,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   action TEXT NOT NULL,

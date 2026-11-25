@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/utils.dart';
-import '../../shared/widgets/smart_data_table.dart';
+import '../../shared/widgets/data_table_pro.dart';
 import '../tickets/ticket_detail.dart';
 
 class CustomersPage extends StatefulWidget {
@@ -79,8 +79,9 @@ class _CustomersPageState extends State<CustomersPage> {
               child: list.isEmpty
                   ? const Center(child: Text('مشتری‌ای ثبت نشده است'))
                   : SingleChildScrollView(
-                      child: SmartDataTable<_CustomerRow>(
+                      child: DataTablePro<_CustomerRow>(
                         rows: list,
+                            tableId: 'customers',
                         searchIndex: (r) =>
                             '${r.c.name} ${r.c.phone} ${r.c.nationalId} ${r.c.tag}',
                         onRowTap: (r) {
@@ -89,22 +90,22 @@ class _CustomersPageState extends State<CustomersPage> {
                           ));
                         },
                         columns: [
-                          SmartColumn<_CustomerRow>(
+                          ProColumn<_CustomerRow>(
                             label: 'نام',
                             display: (r) => r.c.name,
                             width: 180,
                           ),
-                          SmartColumn<_CustomerRow>(
+                          ProColumn<_CustomerRow>(
                             label: 'تلفن',
                             display: (r) => toPersianDigits(r.c.phone),
                             width: 130,
                           ),
-                          SmartColumn<_CustomerRow>(
+                          ProColumn<_CustomerRow>(
                             label: 'کد ملی',
                             display: (r) => toPersianDigits(r.c.nationalId),
                             width: 120,
                           ),
-                          SmartColumn<_CustomerRow>(
+                          ProColumn<_CustomerRow>(
                             label: 'برچسب',
                             display: (r) => r.c.tag.isEmpty ? '—' : r.c.tag,
                             width: 130,

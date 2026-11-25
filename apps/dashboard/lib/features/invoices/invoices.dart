@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/utils.dart';
-import '../../shared/widgets/smart_data_table.dart';
+import '../../shared/widgets/data_table_pro.dart';
 import '../tickets/ticket_detail.dart';
 
 class InvoicesPage extends StatefulWidget {
@@ -86,8 +86,9 @@ class _InvoicesPageState extends State<InvoicesPage> {
                   : rows.isEmpty
                       ? const Center(child: Text('سفارشی ثبت نشده است'))
                       : SingleChildScrollView(
-                          child: SmartDataTable<_InvoiceRow>(
+                          child: DataTablePro<_InvoiceRow>(
                             rows: rows,
+                            tableId: 'invoices',
                             searchIndex: (r) =>
                                 '${r.ticket.code} ${r.customerName}',
                             onRowTap: (r) {
@@ -97,36 +98,36 @@ class _InvoicesPageState extends State<InvoicesPage> {
                               ));
                             },
                             columns: [
-                              SmartColumn<_InvoiceRow>(
+                              ProColumn<_InvoiceRow>(
                                 label: 'شماره سفارش',
                                 display: (r) => r.ticket.code,
                                 width: 150,
                               ),
-                              SmartColumn<_InvoiceRow>(
+                              ProColumn<_InvoiceRow>(
                                 label: 'مشتری',
                                 display: (r) => r.customerName,
                                 width: 170,
                                 filterable: true,
                               ),
-                              SmartColumn<_InvoiceRow>(
+                              ProColumn<_InvoiceRow>(
                                 label: 'وضعیت',
                                 display: (r) => statusLabel(r.ticket.status),
                                 width: 110,
                                 filterable: true,
                               ),
-                              SmartColumn<_InvoiceRow>(
+                              ProColumn<_InvoiceRow>(
                                 label: 'جمع فاکتور',
                                 display: (r) => money(r.total),
                                 width: 130,
                                 numeric: (r) => r.total,
                               ),
-                              SmartColumn<_InvoiceRow>(
+                              ProColumn<_InvoiceRow>(
                                 label: 'پرداخت‌شده',
                                 display: (r) => money(r.paid),
                                 width: 130,
                                 numeric: (r) => r.paid,
                               ),
-                              SmartColumn<_InvoiceRow>(
+                              ProColumn<_InvoiceRow>(
                                 label: 'باقیمانده',
                                 display: (r) => money(r.remaining),
                                 width: 130,

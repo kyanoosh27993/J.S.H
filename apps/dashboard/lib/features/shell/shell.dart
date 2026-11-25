@@ -1,29 +1,34 @@
-/// پوسته اصلی — بازطراحی کامل (قاعده ۱۱)
-/// نوار کنار هوشمند: باز شدن خودکار با hover و جمع شدن با خروج موس (ویندوز)؛
-/// کشویی با دکمه (اندروید). منوی آبشاری بخش‌های هر ماژول در نوار بالا.
+/// پوسته اصلی مدرن — نسخه ۰.۳
+/// سایدبار شناور شیشه‌ای با انیمیشن hover و باز/جمع شدن خودکار (ویندوز)،
+/// منوی کشویی در موبایل، منوی آبشاری بخش‌ها، سوییچر سریع تم و ترنزیشن صفحات.
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
-import '../../core/repos.dart';
+import '../../core/theme/theme_config.dart';
 import '../../core/services/app_session.dart';
 import '../../core/utils.dart';
+import '../../shared/widgets/app_text.dart';
+import '../../shared/widgets/hover_tile.dart';
 import '../assistant/assistant_page.dart';
 import '../board/board.dart';
 import '../calendar/calendar_page.dart';
 import '../customers/customers.dart';
 import '../dbmanager/db_manager_page.dart';
+import '../home/dashboard.dart';
 import '../invoices/invoices.dart';
 import '../intake/intake.dart';
 import '../reminders/reminders.dart';
 import '../settings/settings.dart';
+import '../settings/theme_settings.dart';
 import '../support/support.dart';
+import '../warranty/warranty_page.dart';
 
 class _NavItem {
   final IconData icon;
   final String label;
-  final List<String> sections; // منوی آبشاری بالای ماژول
+  final List<String> sections;
   const _NavItem(this.icon, this.label, {this.sections = const []});
 }
 
@@ -37,71 +42,115 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int index = 0;
-  bool railPinned = false; // حالت موبایل: باز/بسته با دکمه
+  bool railPinned = false;
   bool hoverOpen = false;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const _items = <_NavItem>[
-    _NavItem(Icons.dashboard, 'خانه',
-        sections: ['خلاصه امروز', 'قابل وصول', 'ایمیل‌های در صف']),
-    _NavItem(Icons.add_box, 'پذیرش',
+    _NavItem(Icons.dashboard_rounded, 'خانه',
+        sections: ['خلاصه امروز', 'نمودارها', 'پیش‌بینی درآمد']),
+    _NavItem(Icons.add_box_rounded, 'پذیرش',
         sections: ['فرم رسید سپردن', 'چک‌لیست لوازم', 'امضای مشتری']),
-    _NavItem(Icons.view_kanban, 'کارتابل',
+    _NavItem(Icons.view_kanban_rounded, 'کارتابل',
         sections: ['همه مراحل', 'آماده تحویل', 'انتظار قطعه']),
-    _NavItem(Icons.people, 'مشتریان', sections: ['لیست', 'تاریخچه', 'برچسب‌ها']),
-    _NavItem(Icons.receipt_long, 'فاکتورها',
+    _NavItem(Icons.people_alt_rounded, 'مشتریان',
+        sections: ['لیست', 'تاریخچه', 'برچسب‌ها']),
+    _NavItem(Icons.receipt_long_rounded, 'فاکتورها',
         sections: ['همه فاکتورها', 'تسویه‌شده', 'بدهکار']),
-    _NavItem(Icons.calendar_month, 'تقویم',
+    _NavItem(Icons.calendar_month_rounded, 'تقویم',
         sections: ['ماه جاری', 'تعطیلات رسمی', 'خروجی Google Calendar']),
-    _NavItem(Icons.alarm, 'یادآوری‌ها',
+    _NavItem(Icons.alarm_rounded, 'یادآوری‌ها',
         sections: ['پنجره یادآوری', 'ثبت‌شده‌ها']),
-    _NavItem(Icons.auto_awesome, 'دستیار',
+    _NavItem(Icons.auto_awesome_rounded, 'دستیار',
         sections: ['کارهای روتین', 'گزارش‌های فوری']),
-    _NavItem(Icons.settings_backup_restore, 'دیتابیس',
+    _NavItem(Icons.verified_user_rounded, 'گارانتی',
+        sections: ['فعال', 'نزدیک انقضا', 'منقضی']),
+    _NavItem(Icons.settings_backup_restore_rounded, 'دیتابیس',
         sections: ['بک‌آپ دستی', 'بک‌آپ اتوماتیک', 'پوشه', 'منطقه خطر']),
-    _NavItem(Icons.settings, 'تنظیمات',
-        sections: ['فروشگاه', 'ایمیل', 'یادآوری']),
-    _NavItem(Icons.support_agent, 'پشتیبانی',
+    _NavItem(Icons.settings_rounded, 'تنظیمات',
+        sections: ['فروشگاه', 'ایمیل', 'یادآوری', 'گارانتی']),
+    _NavItem(Icons.palette_rounded, 'تم و ظاهر',
+        sections: ['سه تم پیش‌فرض', 'فونت متن و اعداد', 'شخصی‌سازی ریز']),
+    _NavItem(Icons.support_agent_rounded, 'پشتیبانی',
         sections: ['اطلاعات سازنده', 'لایسنس']),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final cfg = AppThemeScope.of(context);
+    final p = cfg.palette;
     final isNarrow = MediaQuery.of(context).size.width < 760;
     final item = _items[index];
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        key: _scaffoldKey,
         appBar: AppBar(
-          title: Text('${AppInfo.appName} — ${item.label}'),
+          title: AppText('${AppInfo.appName} — ${item.label}',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
           centerTitle: false,
           actions: [
-            // منوی آبشاری بخش‌های ماژول — قاعده ۱۱
             if (item.sections.isNotEmpty)
               PopupMenuButton<String>(
                 tooltip: 'بخش‌های ${item.label}',
                 itemBuilder: (_) => [
                   for (final s in item.sections)
-                    PopupMenuItem(value: s, child: Text(s)),
+                    PopupMenuItem(value: s, child: AppText(s, style: const TextStyle(fontSize: 12.5))),
                 ],
                 onSelected: _onSection,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('بخش‌ها', style: TextStyle(fontSize: 12.5)),
-                      Icon(Icons.expand_more, size: 17),
+                      AppText('بخش‌ها', style: TextStyle(fontSize: 12.5, color: p.textSecondary)),
+                      Icon(Icons.expand_more, size: 17, color: p.textSecondary),
                     ],
                   ),
                 ),
               ),
+            // سوییچر سریع تم — سه پیش‌فرض
+            PopupMenuButton<String>(
+              tooltip: 'تغییر سریع تم',
+              icon: Icon(Icons.palette_outlined, size: 20, color: p.textSecondary),
+              onSelected: (v) {
+                final c = ThemeConfig.notifier.value.copyWith(preset: v);
+                ThemeConfig.save(c);
+              },
+              itemBuilder: (_) => [
+                for (final preset in ThemePreset.values)
+                  PopupMenuItem(
+                    value: preset.key,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.circle,
+                          size: 13,
+                          color: preset == ThemePreset.dark
+                              ? const Color(0xFF4F8CFF)
+                              : preset == ThemePreset.light
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFFD4A437),
+                        ),
+                        const SizedBox(width: 8),
+                        AppText(preset.labelFa, style: const TextStyle(fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            IconButton(
+              tooltip: 'شخصی‌سازی کامل ظاهر',
+              icon: Icon(Icons.tune, size: 20, color: p.textSecondary),
+              onPressed: () => setState(() => index = 11),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Center(
-                child: Text(
+                child: AppNumText(
                   'نصب ${toPersianDigits('${widget.session.license.installCount}')} از ${toPersianDigits('${AppInfo.maxInstalls}')}',
-                  style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+                  style: TextStyle(fontSize: 12, color: p.textSecondary),
                 ),
               ),
             ),
@@ -109,18 +158,32 @@ class _MainShellState extends State<MainShell> {
           leading: isNarrow
               ? IconButton(
                   icon: const Icon(Icons.menu),
-                  onPressed: () => setState(() => railPinned = !railPinned),
+                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                 )
               : null,
         ),
+        drawer: isNarrow ? _mobileDrawer(cfg) : null,
         body: Row(
           children: [
-            if (!isNarrow) _smartRail(),
-            const VerticalDivider(width: 1),
+            if (!isNarrow) _floatingRail(cfg),
             Expanded(
-              child: KeyedSubtree(
-                key: ValueKey(index),
-                child: _page(index),
+              child: AnimatedSwitcher(
+                duration: Duration(milliseconds: cfg.animations ? 220 : 0),
+                switchInCurve: Curves.easeOut,
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 0.015),
+                      end: Offset.zero,
+                    ).animate(anim),
+                    child: child,
+                  ),
+                ),
+                child: KeyedSubtree(
+                  key: ValueKey(index),
+                  child: _page(index),
+                ),
               ),
             ),
           ],
@@ -130,18 +193,18 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _onSection(String s) {
-    // بخش‌ها راهنمای دسترسی سریع هستند؛ در فازهای بعد به فیلترهای صفحه تبدیل می‌شوند
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('$s — از داخل صفحه ${_items[index].label} استفاده کنید'),
       duration: const Duration(seconds: 2),
     ));
   }
 
-  /// نوار کنار هوشمند — قاعده ۱۱: hover باز می‌شود، خروج موس جمع می‌کند
-  Widget _smartRail() {
-    const collapsedWidth = 62.0;
-    const expandedWidth = 216.0;
+  // ── سایدبار شناور — هاور باز، خروج موس جمع می‌کند (قاعده ۱۱ و طراحی مدرن) ──
+  Widget _floatingRail(ThemeConfig cfg) {
+    const collapsedWidth = 68.0;
+    const expandedWidth = 218.0;
     final open = hoverOpen || railPinned;
+    final p = cfg.palette;
 
     return MouseRegion(
       onEnter: (_) => setState(() => hoverOpen = true),
@@ -150,22 +213,81 @@ class _MainShellState extends State<MainShell> {
         railPinned = false;
       }),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: Duration(milliseconds: cfg.animations ? 200 : 0),
         curve: Curves.easeOut,
         width: open ? expandedWidth : collapsedWidth,
+        margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          border: Border(
-            left: BorderSide(color: Colors.grey.shade300, width: 0.6),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: p.sidebarGradient,
           ),
+          borderRadius: BorderRadius.circular(cfg.baseRadius * 1.2),
+          border: Border.all(color: p.border, width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(
+                  alpha: p.brightness == Brightness.dark ? 0.35 : 0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           children: [
+            const SizedBox(height: 8),
+            // برند
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        p.primary,
+                        p.accent,
+                      ]),
+                      borderRadius:
+                          BorderRadius.circular(cfg.baseRadius * 0.65),
+                    ),
+                    child: const Icon(Icons.build_circle, color: Colors.white, size: 22),
+                  ),
+                  if (open) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppText(AppInfo.appName,
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: p.textPrimary)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Divider(height: 8),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
                 children: [
-                  for (var i = 0; i < _items.length; i++) _railItem(i, open),
+                  for (var i = 0; i < _items.length; i++) _railItem(i, open, cfg),
+                ],
+              ),
+            ),
+            const Divider(height: 8),
+            // سه تم پیش‌فرض پایین سایدبار
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
+                children: [
+                  for (final preset in ThemePreset.values)
+                    _themeDot(preset, cfg, open),
                 ],
               ),
             ),
@@ -175,46 +297,127 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Widget _railItem(int i, bool open) {
+  Widget _themeDot(ThemePreset preset, ThemeConfig cfg, bool open) {
+    final color = preset == ThemePreset.dark
+        ? const Color(0xFF4F8CFF)
+        : preset == ThemePreset.light
+            ? const Color(0xFF2563EB)
+            : const Color(0xFFD4A437);
+    final active = cfg.preset == preset.key;
+    return Tooltip(
+      message: preset.labelFa,
+      child: GestureDetector(
+        onTap: () => ThemeConfig.save(
+            ThemeConfig.notifier.value.copyWith(preset: preset.key)),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: active ? 22 : 16,
+          height: active ? 22 : 16,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: active ? cfg.palette.accent : Colors.transparent,
+                width: 2),
+          ),
+          child: active
+              ? const Icon(Icons.check, size: 11, color: Colors.white)
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _railItem(int i, bool open, ThemeConfig cfg) {
     final item = _items[i];
     final active = index == i;
-    final color = active
-        ? Theme.of(context).colorScheme.primary
-        : Colors.blueGrey.shade700;
+    final p = cfg.palette;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      child: Material(
-        color: active
-            ? Theme.of(context).colorScheme.primaryContainer
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(9),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(9),
-          onTap: () => setState(() => index = i),
-          child: SizedBox(
-            height: 42,
-            child: Row(
-              children: [
-                const SizedBox(width: 8),
-                Icon(item.icon, size: 21, color: color),
-                if (open) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      item.label,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: color,
-                          fontWeight: active ? FontWeight.bold : FontWeight.w500),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: HoverTile(
+        active: active,
+        radius: cfg.baseRadius * 0.8,
+        hoverColor: p.primary.withValues(alpha: 0.12),
+        activeColor: p.primary.withValues(alpha: 0.18),
+        animate: cfg.animations,
+        onTap: () => setState(() => index = i),
+        child: SizedBox(
+          height: 42,
+          child: Row(
+            children: [
+              const SizedBox(width: 8),
+              // نشانگر فعال
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 3.5,
+                height: active ? 26 : 0,
+                decoration: BoxDecoration(
+                  color: p.primary,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(item.icon,
+                  size: 21,
+                  color: active ? p.primary : p.textSecondary),
+              if (open) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: AppText(
+                    item.label,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: active ? p.primary : p.textPrimary,
+                        fontWeight: active ? FontWeight.bold : FontWeight.w500),
                   ),
-                ],
-                const SizedBox(width: 8),
+                ),
+              ],
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _mobileDrawer(ThemeConfig cfg) {
+    final p = cfg.palette;
+    return Drawer(
+      backgroundColor: p.surface,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration:
+                BoxDecoration(gradient: LinearGradient(colors: p.sidebarGradient)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.build_circle, color: p.primary, size: 34),
+                const SizedBox(height: 8),
+                AppText(AppInfo.appName,
+                    style: TextStyle(
+                        color: p.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold)),
               ],
             ),
           ),
-        ),
+          for (var i = 0; i < _items.length; i++)
+            ListTile(
+              leading: Icon(_items[i].icon,
+                  color: index == i ? p.primary : p.textSecondary),
+              title: AppText(_items[i].label,
+                  style: TextStyle(
+                      color: index == i ? p.primary : p.textPrimary,
+                      fontWeight: index == i ? FontWeight.bold : FontWeight.w500)),
+              onTap: () {
+                setState(() => index = i);
+                Navigator.pop(context);
+              },
+            ),
+        ],
       ),
     );
   }
@@ -222,7 +425,7 @@ class _MainShellState extends State<MainShell> {
   Widget _page(int i) {
     switch (i) {
       case 0:
-        return _HomePage(session: widget.session, onGo: (n) => setState(() => index = n));
+        return DashboardPage(session: widget.session, onGo: (n) => setState(() => index = n));
       case 1:
         return const IntakePage();
       case 2:
@@ -238,10 +441,14 @@ class _MainShellState extends State<MainShell> {
       case 7:
         return const AssistantPage();
       case 8:
-        return const DbManagerPage();
+        return const WarrantyPage();
       case 9:
-        return const SettingsPage();
+        return const DbManagerPage();
       case 10:
+        return const SettingsPage();
+      case 11:
+        return const ThemeSettingsPage();
+      case 12:
         return const SupportPage();
       default:
         return const SizedBox();
@@ -249,134 +456,3 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-/// صفحه خانه با کوئری‌های تجمیعی — بهینه برای سیستم ضعیف (قاعده ۱۱)
-class _HomePage extends StatefulWidget {
-  final AppSession session;
-  final void Function(int) onGo;
-  const _HomePage({required this.session, required this.onGo});
-
-  @override
-  State<_HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<_HomePage> {
-  int openTickets = 0;
-  int readyTickets = 0;
-  int deliveredMonth = 0;
-  int receivable = 0;
-  bool pendingEmails = false;
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final tickets = await TicketRepo.all();
-    final itemSums = await TicketItemRepo.sumsForAllTickets();
-    final paidSums = await PaymentRepo.paidSumForAll();
-    var receivableSum = 0;
-    for (final t in tickets) {
-      if (t.status == 'delivered') continue;
-      final itemsSum = itemSums[t.id] ?? 0;
-      final total = itemsSum > 0 ? itemsSum : t.estimateAmount;
-      receivableSum += total - (paidSums[t.id] ?? 0);
-    }
-    final now = DateTime.now();
-    final monthPrefix = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-    final delivered = tickets
-        .where((t) =>
-            t.status == 'delivered' && t.updatedAt.startsWith(monthPrefix))
-        .length;
-    final pending = await EmailQueueRepo.hasPending();
-    if (!mounted) return;
-    setState(() {
-      openTickets = tickets.where((t) => t.status != 'delivered').length;
-      readyTickets = tickets.where((t) => t.status == 'ready').length;
-      deliveredMonth = delivered;
-      receivable = receivableSum;
-      pendingEmails = pending;
-      loading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    return Padding(
-      padding: const EdgeInsets.all(18),
-      child: ListView(
-        children: [
-          Text('سلام! وضعیت امروز فروشگاه',
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _kpi('سفارش‌های باز', openTickets, Icons.work, Colors.indigo),
-              _kpi('آماده تحویل', readyTickets, Icons.done_all, Colors.green),
-              _kpi('تحویل این ماه', deliveredMonth, Icons.local_shipping, Colors.blue),
-              _kpi('قابل وصول از مشتریان', receivable, Icons.payments,
-                  Colors.deepOrange, money: true),
-            ],
-          ),
-          if (pendingEmails)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Card(
-                color: Colors.orange.shade50,
-                child: const ListTile(
-                  leading: Icon(Icons.hourglass_top, color: Colors.orange),
-                  title: Text(
-                      'ایمیل‌هایی در صف ارسال است — با وصل شدن اینترنت به‌صورت خودکار ارسال می‌شوند.'),
-                ),
-              ),
-            ),
-          const SizedBox(height: 16),
-          Wrap(spacing: 10, children: [
-            FilledButton.icon(
-              onPressed: () => widget.onGo(1),
-              icon: const Icon(Icons.add_box),
-              label: const Text('پذیرش دستگاه جدید'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => widget.onGo(5),
-              icon: const Icon(Icons.calendar_month),
-              label: const Text('تقویم سفارشات'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => widget.onGo(7),
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('دستیار هوشمند'),
-            ),
-          ]),
-        ],
-      ),
-    );
-  }
-
-  Widget _kpi(String label, num value, IconData icon, Color color,
-      {bool money = false}) {
-    return SizedBox(
-      width: 215,
-      child: Card(
-        child: ListTile(
-          leading: CircleAvatar(
-              backgroundColor: color.withValues(alpha: 0.15),
-              child: Icon(icon, color: color)),
-          title: Text(label,
-              style: const TextStyle(fontSize: 12.5, color: Colors.blueGrey)),
-          subtitle: Text(
-            money ? moneyToman(value) : toPersianDigits('$value'),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
-    );
-  }
-}

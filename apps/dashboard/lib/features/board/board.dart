@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/utils.dart';
+import '../../core/warranty.dart';
 import '../tickets/ticket_detail.dart';
 
 class BoardPage extends StatefulWidget {
@@ -41,6 +42,13 @@ class _BoardPageState extends State<BoardPage> {
     final next = idx + (forward ? 1 : -1);
     if (next < 0 || next >= TicketStatus.order.length) return;
     await TicketRepo.changeStatus(t.id!, TicketStatus.order[next]);
+    // فاز ۲: گارانتی خودکار هنگام تحویل
+    if (TicketStatus.order[next] == 'delivered') {
+      try {
+        final months = await WarrantyRepo.defaultMonths();
+        await WarrantyRepo.upsertForTicket(t.id!, months);
+      } catch (_) {}
+    }
     await _load();
   }
 

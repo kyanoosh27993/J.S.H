@@ -1,14 +1,14 @@
 {
- "generated_at": "2026-11-25T19:58:48",
+ "generated_at": "2026-11-25T20:31:41",
  "stats": {
-  "files": 37,
-  "loc": 7218,
-  "edges": 131
+  "files": 48,
+  "loc": 10592,
+  "edges": 174
  },
  "modules": {
   "root": {
    "files": 2,
-   "loc": 186
+   "loc": 196
   },
   "core/constants.dart": {
    "files": 1,
@@ -16,7 +16,7 @@
   },
   "core/db": {
    "files": 1,
-   "loc": 197
+   "loc": 206
   },
   "core/models.dart": {
    "files": 1,
@@ -27,12 +27,20 @@
    "loc": 337
   },
   "core/services": {
-   "files": 10,
-   "loc": 1614
+   "files": 12,
+   "loc": 1878
+  },
+  "core/theme": {
+   "files": 1,
+   "loc": 465
   },
   "core/utils.dart": {
    "files": 1,
    "loc": 86
+  },
+  "core/warranty.dart": {
+   "files": 1,
+   "loc": 125
   },
   "features/assistant": {
    "files": 1,
@@ -40,7 +48,7 @@
   },
   "features/board": {
    "files": 1,
-   "loc": 173
+   "loc": 181
   },
   "features/calendar": {
    "files": 1,
@@ -48,11 +56,15 @@
   },
   "features/customers": {
    "files": 1,
-   "loc": 263
+   "loc": 264
   },
   "features/dbmanager": {
    "files": 2,
-   "loc": 572
+   "loc": 573
+  },
+  "features/home": {
+   "files": 1,
+   "loc": 280
   },
   "features/intake": {
    "files": 1,
@@ -60,7 +72,7 @@
   },
   "features/invoices": {
    "files": 1,
-   "loc": 144
+   "loc": 145
   },
   "features/onboarding": {
    "files": 1,
@@ -71,12 +83,12 @@
    "loc": 152
   },
   "features/settings": {
-   "files": 1,
-   "loc": 184
+   "files": 2,
+   "loc": 731
   },
   "features/shell": {
    "files": 1,
-   "loc": 382
+   "loc": 458
   },
   "features/support": {
    "files": 2,
@@ -86,13 +98,21 @@
    "files": 1,
    "loc": 295
   },
+  "features/warranty": {
+   "files": 1,
+   "loc": 240
+  },
+  "shared/charts": {
+   "files": 1,
+   "loc": 652
+  },
   "shared/data": {
    "files": 1,
    "loc": 53
   },
   "shared/widgets": {
-   "files": 4,
-   "loc": 763
+   "files": 7,
+   "loc": 1458
   }
  },
  "files": {
@@ -105,9 +125,10 @@
     "lib/core/services/reminder_service.dart",
     "lib/features/onboarding/onboarding.dart",
     "lib/features/shell/shell.dart",
+    "lib/core/theme/theme_config.dart",
     "lib/features/support/blocked.dart"
    ],
-   "loc": 175
+   "loc": 174
   },
   "lib/core/constants.dart": {
    "imports": [],
@@ -115,7 +136,7 @@
   },
   "lib/core/db/db.dart": {
    "imports": [],
-   "loc": 197
+   "loc": 206
   },
   "lib/core/models.dart": {
    "imports": [],
@@ -149,9 +170,11 @@
     "lib/core/utils.dart",
     "lib/core/services/backup_service.dart",
     "lib/core/services/pdf_service.dart",
-    "lib/core/services/reminder_service.dart"
+    "lib/core/services/forecast_service.dart",
+    "lib/core/services/reminder_service.dart",
+    "lib/core/warranty.dart"
    ],
-   "loc": 270
+   "loc": 337
   },
   "lib/core/services/backup_service.dart": {
    "imports": [
@@ -172,6 +195,17 @@
     "lib/core/repos.dart"
    ],
    "loc": 168
+  },
+  "lib/core/services/font_service.dart": {
+   "imports": [],
+   "loc": 107
+  },
+  "lib/core/services/forecast_service.dart": {
+   "imports": [
+    "lib/core/repos.dart",
+    "lib/core/warranty.dart"
+   ],
+   "loc": 90
   },
   "lib/core/services/install_report_service.dart": {
    "imports": [
@@ -212,9 +246,22 @@
    ],
    "loc": 142
   },
+  "lib/core/theme/theme_config.dart": {
+   "imports": [
+    "lib/core/repos.dart"
+   ],
+   "loc": 465
+  },
   "lib/core/utils.dart": {
    "imports": [],
    "loc": 86
+  },
+  "lib/core/warranty.dart": {
+   "imports": [
+    "lib/core/db/db.dart",
+    "lib/core/repos.dart"
+   ],
+   "loc": 125
   },
   "lib/features/assistant/assistant_page.dart": {
    "imports": [
@@ -228,9 +275,10 @@
     "lib/core/models.dart",
     "lib/core/repos.dart",
     "lib/core/utils.dart",
+    "lib/core/warranty.dart",
     "lib/features/tickets/ticket_detail.dart"
    ],
-   "loc": 173
+   "loc": 181
   },
   "lib/features/calendar/calendar_page.dart": {
    "imports": [
@@ -249,20 +297,20 @@
     "lib/core/models.dart",
     "lib/core/repos.dart",
     "lib/core/utils.dart",
-    "lib/shared/widgets/smart_data_table.dart",
+    "lib/shared/widgets/data_table_pro.dart",
     "lib/features/tickets/ticket_detail.dart"
    ],
-   "loc": 263
+   "loc": 264
   },
   "lib/features/dbmanager/db_manager_page.dart": {
    "imports": [
     "lib/core/services/backup_service.dart",
     "lib/core/services/supervisor_service.dart",
     "lib/core/utils.dart",
-    "lib/shared/widgets/smart_data_table.dart",
+    "lib/shared/widgets/data_table_pro.dart",
     "lib/features/dbmanager/supervisor_gate.dart"
    ],
-   "loc": 466
+   "loc": 467
   },
   "lib/features/dbmanager/supervisor_gate.dart": {
    "imports": [
@@ -270,6 +318,18 @@
     "lib/core/utils.dart"
    ],
    "loc": 106
+  },
+  "lib/features/home/dashboard.dart": {
+   "imports": [
+    "lib/core/repos.dart",
+    "lib/core/services/app_session.dart",
+    "lib/core/services/forecast_service.dart",
+    "lib/core/theme/theme_config.dart",
+    "lib/core/utils.dart",
+    "lib/shared/charts/modern_charts.dart",
+    "lib/shared/widgets/app_text.dart"
+   ],
+   "loc": 280
   },
   "lib/features/intake/intake.dart": {
    "imports": [
@@ -290,10 +350,10 @@
     "lib/core/models.dart",
     "lib/core/repos.dart",
     "lib/core/utils.dart",
-    "lib/shared/widgets/smart_data_table.dart",
+    "lib/shared/widgets/data_table_pro.dart",
     "lib/features/tickets/ticket_detail.dart"
    ],
-   "loc": 144
+   "loc": 145
   },
   "lib/features/onboarding/onboarding.dart": {
    "imports": [
@@ -328,24 +388,40 @@
    ],
    "loc": 184
   },
+  "lib/features/settings/theme_settings.dart": {
+   "imports": [
+    "lib/core/services/font_service.dart",
+    "lib/core/theme/theme_config.dart",
+    "lib/core/utils.dart",
+    "lib/shared/widgets/app_text.dart",
+    "lib/shared/widgets/hover_tile.dart",
+    "lib/shared/charts/modern_charts.dart"
+   ],
+   "loc": 547
+  },
   "lib/features/shell/shell.dart": {
    "imports": [
     "lib/core/constants.dart",
-    "lib/core/repos.dart",
+    "lib/core/theme/theme_config.dart",
     "lib/core/services/app_session.dart",
     "lib/core/utils.dart",
+    "lib/shared/widgets/app_text.dart",
+    "lib/shared/widgets/hover_tile.dart",
     "lib/features/assistant/assistant_page.dart",
     "lib/features/board/board.dart",
     "lib/features/calendar/calendar_page.dart",
     "lib/features/customers/customers.dart",
     "lib/features/dbmanager/db_manager_page.dart",
+    "lib/features/home/dashboard.dart",
     "lib/features/invoices/invoices.dart",
     "lib/features/intake/intake.dart",
     "lib/features/reminders/reminders.dart",
     "lib/features/settings/settings.dart",
-    "lib/features/support/support.dart"
+    "lib/features/settings/theme_settings.dart",
+    "lib/features/support/support.dart",
+    "lib/features/warranty/warranty_page.dart"
    ],
-   "loc": 382
+   "loc": 458
   },
   "lib/features/support/blocked.dart": {
    "imports": [
@@ -370,16 +446,56 @@
    ],
    "loc": 295
   },
+  "lib/features/warranty/warranty_page.dart": {
+   "imports": [
+    "lib/core/repos.dart",
+    "lib/core/theme/theme_config.dart",
+    "lib/core/utils.dart",
+    "lib/core/warranty.dart",
+    "lib/shared/widgets/app_text.dart",
+    "lib/shared/widgets/data_table_pro.dart"
+   ],
+   "loc": 240
+  },
   "lib/main.dart": {
    "imports": [
     "lib/app.dart",
-    "lib/core/services/app_session.dart"
+    "lib/core/services/app_session.dart",
+    "lib/core/services/font_service.dart",
+    "lib/core/theme/theme_config.dart"
    ],
-   "loc": 11
+   "loc": 22
+  },
+  "lib/shared/charts/modern_charts.dart": {
+   "imports": [
+    "lib/core/theme/theme_config.dart",
+    "lib/core/utils.dart",
+    "lib/shared/widgets/app_text.dart"
+   ],
+   "loc": 652
   },
   "lib/shared/data/holidays.dart": {
    "imports": [],
    "loc": 53
+  },
+  "lib/shared/widgets/app_text.dart": {
+   "imports": [
+    "lib/core/theme/theme_config.dart"
+   ],
+   "loc": 78
+  },
+  "lib/shared/widgets/data_table_pro.dart": {
+   "imports": [
+    "lib/core/repos.dart",
+    "lib/core/theme/theme_config.dart",
+    "lib/core/utils.dart",
+    "lib/shared/widgets/app_text.dart"
+   ],
+   "loc": 544
+  },
+  "lib/shared/widgets/hover_tile.dart": {
+   "imports": [],
+   "loc": 73
   },
   "lib/shared/widgets/persian_number_field.dart": {
    "imports": [

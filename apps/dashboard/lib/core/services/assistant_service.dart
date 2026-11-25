@@ -13,7 +13,9 @@ import '../repos.dart';
 import '../utils.dart';
 import 'backup_service.dart';
 import 'pdf_service.dart';
+import 'forecast_service.dart';
 import 'reminder_service.dart';
+import '../warranty.dart';
 
 class AssistantAction {
   final String label;
@@ -84,7 +86,19 @@ class AssistantService {
       return _revenueSummary(text);
     }
 
-    // «مستعد / مشتری‌های بدهکار»
+    // فاز ۲: گارانتی
+    if (text.contains('گارانتی')) {
+      final code = _codeIn(text);
+      if (code != null) return _warrantyInfo(code);
+      return _warrantySummary();
+    }
+
+    // فاز ۲: پیش‌بینی فروش
+    if (text.contains('پیش') && text.contains('بینی') || text.contains('پیش بینی')) {
+      return _forecastSummary();
+    }
+
+    // راهنما
     if (text.contains('بدهکار')) {
       return _receivablesSummary();
     }
@@ -255,6 +269,59 @@ class AssistantService {
     return AssistantReply(
       '${isToday ? 'درآمد امروز' : 'درآمد این ماه'}: ${moneyToman(revenue)} '
       'از ${toPersianDigits('$n')} سفارش تحویل‌شده.',
+    );
+  }
+  static Future<AssistantReply> _warrantyInfo(String code) async {
+    final tickets = await TicketRepo.all();
+    Ticket? ticket;
+    for (final t in tickets) {
+      if (t.code.toUpperCase() == code.toUpperCase()) {
+        ticket = t;
+        break;
+      }
+    }
+    if (ticket == null) return AssistantReply('سفارش «$code» پیدا نشد.');
+    final w = await WarrantyRepo.forTicket(ticket.id!);
+    if (w == null) {
+      return AssistantReply('برای ${ticket.code} گارانتی ثبت نشده — با تحویل، خودکار ساخته می‌شود.');
+    }
+    final days = w.endDate.difference(DateTime.now()).inDays;
+    return AssistantReply(
+      'گارانتی ${ticket.code}: تا ${shamsiDate(w.endDate)} '
+      '(${days >= 0 ? '${toPersianDigits('$days')} روز باقی‌مانده' : 'منقضی شده'}) — '
+      'مجموع ${toPersianDigits('${w.months}')} ماه. برای تمدید به ماژول گارانتی بروید.',
+    );
+  }
+
+  static Future<AssistantReply> _warrantySummary() async {
+    final all = await WarrantyRepo.all();
+    var active = 0, expiring = 0, expired = 0;
+    for (final w in all) {
+      switch (w.liveStatus()) {
+        case 'active':
+          active++;
+          break;
+        case 'expiring':
+          expiring++;
+          break;
+        default:
+          expired++;
+      }
+    }
+    return AssistantReply(
+      'گارانتی‌ها: ${toPersianDigits('$active')} فعال، '
+      '${toPersianDigits('$expiring')} نزدیک انقضا (۳۰ روز پایانی)، '
+      '${toPersianDigits('$expired')} منقضی. ماژول گارانتی را ببینید.',
+    );
+  }
+
+  static Future<AssistantReply> _forecastSummary() async {
+    final future = await ForecastService.forecast(months: 3);
+    final total = future.fold<double>(0, (s, e) => s + e.value);
+    return AssistantReply(
+      'پیش‌بینی صادقانه (میانگین متحرک ۳ ماه گذشته): '
+      'درآمد تقریبی هر یک از ۳ ماه آینده حدود ${moneyToman(total ~/ 3)} تومان است. '
+      'نمودار خطی داشبورد همین پیش‌بینی را با خط‌چین نشان می‌دهد.',
     );
   }
 }

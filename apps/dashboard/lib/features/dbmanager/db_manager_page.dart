@@ -10,7 +10,7 @@ import 'package:path/path.dart' as p;
 import '../../core/services/backup_service.dart';
 import '../../core/services/supervisor_service.dart';
 import '../../core/utils.dart';
-import '../../shared/widgets/smart_data_table.dart';
+import '../../shared/widgets/data_table_pro.dart';
 import 'supervisor_gate.dart';
 
 class DbManagerPage extends StatefulWidget {
@@ -288,22 +288,23 @@ class _DbManagerPageState extends State<DbManagerPage> {
             child: Text('بک‌آپی در این بخش نیست.'),
           )
         else
-          SmartDataTable<BackupInfo>(
+          DataTablePro<BackupInfo>(
             rows: backups,
+                            tableId: 'backups',
             showSums: false,
             columns: [
-              SmartColumn<BackupInfo>(
+              ProColumn<BackupInfo>(
                 label: 'نام فایل',
                 display: (b) => b.name,
                 width: 300,
               ),
-              SmartColumn<BackupInfo>(
+              ProColumn<BackupInfo>(
                 label: 'تاریخ',
                 display: (b) => shamsiDateTime(b.createdAt),
                 width: 160,
                 numeric: (b) => b.createdAt.millisecondsSinceEpoch,
               ),
-              SmartColumn<BackupInfo>(
+              ProColumn<BackupInfo>(
                 label: 'حجم',
                 display: (b) => '${toPersianDigits('${(b.sizeBytes / 1024).round()}')} کیلوبایت',
                 width: 110,

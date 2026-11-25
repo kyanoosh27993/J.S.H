@@ -14,6 +14,7 @@ import 'core/services/install_report_service.dart';
 import 'core/services/reminder_service.dart';
 import 'features/onboarding/onboarding.dart';
 import 'features/shell/shell.dart';
+import 'core/theme/theme_config.dart';
 import 'features/support/blocked.dart';
 
 class JshDashboardApp extends StatefulWidget {
@@ -57,31 +58,29 @@ class _JshDashboardAppState extends State<JshDashboardApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: AppInfo.appName,
-      debugShowCheckedModeBanner: false,
-      locale: const Locale('fa', 'IR'),
-      theme: _theme(),
-      builder: (context, child) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: child!,
-      ),
-      home: _RootGate(session: widget.session),
+    // تم زنده — هر تغییر شخصی‌سازی بلافاصله در کل برنامه اعمال می‌شود
+    return ValueListenableBuilder<ThemeConfig>(
+      valueListenable: ThemeConfig.notifier,
+      builder: (context, cfg, _) {
+        final themeData = AppTheme.build(cfg);
+        return MaterialApp(
+          title: AppInfo.appName,
+          debugShowCheckedModeBanner: false,
+          locale: const Locale('fa', 'IR'),
+          theme: themeData,
+          builder: (context, child) => AppThemeScope(
+            notifier: ThemeConfig.notifier,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: child!,
+            ),
+          ),
+          home: _RootGate(session: widget.session),
+        );
+      },
     );
   }
 
-  ThemeData _theme() {
-    const seed = Color(0xFF1E3A5F);
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: seed),
-      fontFamily: 'Vazirmatn',
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-        isDense: true,
-      ),
-    );
-  }
 }
 
 /// دروازه اصلی — هر بار اجرا از نو بررسی می‌شود (N-03 مطلق است)
