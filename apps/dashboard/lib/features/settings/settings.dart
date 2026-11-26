@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
 import '../../core/services/email_service.dart';
+import '../../core/services/sheet_sync_service.dart';
 import '../../core/utils.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -23,11 +24,15 @@ class _SettingsPageState extends State<SettingsPage> {
   final shopEmail = TextEditingController();
   final smtpUser = TextEditingController();
   final smtpPass = TextEditingController();
+  final sheetEndpoint = TextEditingController();
   int leadDays = ReminderPrefs.defaultLeadDays;
   int reminderHour = ReminderPrefs.defaultHour;
   bool saved = false;
   bool testing = false;
   String testResult = '';
+  bool syncing = false;
+  String syncResult = '';
+  int pendingOps = 0;
 
   @override
   void initState() {
@@ -37,7 +42,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in [shopName, shopAddress, shopPhone, shopEmail, smtpUser, smtpPass]) {
+    for (final c in [shopName, shopAddress, shopPhone, shopEmail, smtpUser, smtpPass, sheetEndpoint]) {
       c.dispose();
     }
     super.dispose();
@@ -55,7 +60,10 @@ class _SettingsPageState extends State<SettingsPage> {
       smtpPass.text = s['smtp_password'] ?? '';
       leadDays = int.tryParse(s['reminder_lead_days'] ?? '') ?? ReminderPrefs.defaultLeadDays;
       reminderHour = int.tryParse(s['reminder_hour'] ?? '') ?? ReminderPrefs.defaultHour;
+      sheetEndpoint.text = s[SheetSyncConst.endpointSettingKey] ?? '';
     });
+    pendingOps = await SheetSyncService.pendingCount();
+    if (mounted) setState(() {});
   }
 
   Future<void> _save() async {
@@ -87,12 +95,33 @@ class _SettingsPageState extends State<SettingsPage> {
         body: 'اگر این ایمیل را دریافت کرده‌اید، تنظیمات ارسال درست است.',
       );
       final sent = await EmailService.drainQueue(AppSession.I.smtp);
-      setState(() => testResult =
-          sent > 0 ? 'ارسال موفق بود — ایمیل آزمایشی دریافت شد.' : 'ارسال انجام نشد — اتصال اینترنت یا رمز برنامه را بررسی کنید.');
+      setState(() => testResult = sent > 0
+          ? 'ارسال موفق بود — ایمیل آزمایشی دریافت شد.'
+          : AppSession.I.smtp.configured
+              ? 'ارسال انجام نشد — اینترنت را بررسی و «رمز برنامه» Gmail (App Password) را دوباره وارد کنید.'
+              : 'ایمیل و رمز برنامه هنوز ذخیره نشده‌اند — فیلدهای بالا را پر و ذخیره کنید.');
     } catch (e) {
       setState(() => testResult = 'خطا: $e');
     } finally {
       if (mounted) setState(() => testing = false);
+    }
+  }
+
+  /// ذخیره آدرس Apps Script و اعمال صف منتظر روی شیت (افزودن/ویرایش/حذف)
+  Future<void> _syncSheet() async {
+    setState(() {
+      syncing = true;
+      syncResult = '';
+    });
+    try {
+      await SheetSyncService.setEndpoint(sheetEndpoint.text.trim());
+      final r = await SheetSyncService.pushAll(includeDelivered: true);
+      pendingOps = await SheetSyncService.pendingCount();
+      syncResult = r.fa;
+    } catch (e) {
+      syncResult = 'خطا: $e';
+    } finally {
+      if (mounted) setState(() => syncing = false);
     }
   }
 
@@ -130,6 +159,26 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(width: 10),
               Expanded(child: Text(testResult, style: const TextStyle(fontSize: 12.5))),
+            ]),
+            const SizedBox(height: 16),
+            const Text('همگام‌سازی Google Sheet (آدرس Web App از Apps Script)',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            _f(sheetEndpoint, 'آدرس endpoint (https://script.google.com/.../exec)'),
+            Text(pendingOps == 0
+                ? 'صف همگام‌سازی خالی است — همه عملیات اعمال شده‌اند.'
+                : '${toPersianDigits('$pendingOps')} عملیات در انتظار اعمال روی شیت (افزودن/ویرایش/حذف)'),
+            const SizedBox(height: 6),
+            Row(children: [
+              FilledButton.tonalIcon(
+                onPressed: syncing ? null : _syncSheet,
+                icon: syncing
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.cloud_sync),
+                label: const Text('ذخیره و اعمال در شیت'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(syncResult, style: const TextStyle(fontSize: 12.5))),
             ]),
             const SizedBox(height: 16),
             const Text('تنظیمات یادآوری', style: TextStyle(fontWeight: FontWeight.bold)),
