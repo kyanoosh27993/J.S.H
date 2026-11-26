@@ -1,4 +1,5 @@
-/// تولید خروجی Google Calendar برای سفارشات فردا (۱۴۰۵/۰۹/۰۵) — مسیر مخازن برنامه
+/// تولید خروجی Google Calendar برای سفارشات فردا — مسیر مخازن برنامه
+/// (تاریخ‌ها داینامیک‌اند تا تست مستقل از روز اجرا باشد)
 library;
 
 import 'dart:io';
@@ -62,7 +63,12 @@ const orders = <Map<String, String>>[
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory tempDir;
-  final tomorrow = DateTime(2026, 11, 26); // ۱۴۰۵/۰۹/۰۵
+  // فردای واقعی — تست مستقل از تاریخ اجرا (رفع خطای تاریخ ثابت)
+  final tomorrow = DateTime.now().add(const Duration(days: 1));
+  String icsDay(DateTime t) =>
+      '${t.year.toString().padLeft(4, '0')}'
+      '${t.month.toString().padLeft(2, '0')}'
+      '${t.day.toString().padLeft(2, '0')}';
 
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('jsh_ics');
@@ -78,6 +84,7 @@ void main() {
   });
 
   test('ثبت ۵ سفارش فردا از مخازن برنامه + خروجی Google Calendar', () async {
+    final codes = <String>[];
     for (final o in orders) {
       final c = Customer(name: o['name']!, phone: o['phone']!)
         ..nationalId = o['nid']!;
@@ -85,8 +92,10 @@ void main() {
       final d = Device(customerId: c.id!, model: o['model']!)
         ..serial = o['serial']!;
       d.id = await DeviceRepo.insert(d);
+      final code = await TicketRepo.nextCode();
+      codes.add(code);
       final t = Ticket(
-        code: await TicketRepo.nextCode(),
+        code: code,
         customerId: c.id!,
         deviceId: d.id!,
         intakeDate: DateTime.now(),
@@ -108,8 +117,12 @@ void main() {
     }
 
     final all = await TicketRepo.all();
-    final tomorrowOrders =
-        all.where((t) => t.dueDate.day == tomorrow.day).toList();
+    final tomorrowOrders = all
+        .where((t) =>
+            t.dueDate.year == tomorrow.year &&
+            t.dueDate.month == tomorrow.month &&
+            t.dueDate.day == tomorrow.day)
+        .toList();
     expect(tomorrowOrders.length, 5);
 
     final ics = await CalendarExportService.buildIcs(
@@ -117,14 +130,14 @@ void main() {
     expect('BEGIN:VEVENT'.allMatches(ics).length, 5);
     expect(ics, contains('BEGIN:VTIMEZONE'));
     expect(ics, contains('TZID:Asia/Tehran'));
-    expect(ics, contains('DTSTART;TZID=Asia/Tehran:20261126T080000'));
-    expect(ics, contains('DTSTART;TZID=Asia/Tehran:20261126T120000'));
-    expect(ics, contains('SUMMARY:تحویل RCP-20261125-001 — علی رضایی'));
+    expect(ics, contains('DTSTART;TZID=Asia/Tehran:${icsDay(tomorrow)}T080000'));
+    expect(ics, contains('DTSTART;TZID=Asia/Tehran:${icsDay(tomorrow)}T120000'));
+    expect(ics, contains('SUMMARY:تحویل ${codes.first} — علی رضایی'));
     expect(ics, contains('دستگاه: iPhone 13'));
     expect(ics, contains('BEGIN:VALARM'));
 
-    final out = File(
-        '/home/z/my-project/download/JSH_Dashboard/jsh_deliveries_1405-09-05_farda.ics');
+    // خروجی در مسیر موقت — قابل اجرا روی هر ماشین (نه فقط سندباکس توسعه)
+    final out = File('${tempDir.path}/jsh_deliveries_farda.ics');
     await out.parent.create(recursive: true);
     await out.writeAsString(ics, flush: true);
     expect(await out.exists(), isTrue);
