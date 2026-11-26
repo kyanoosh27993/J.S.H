@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
+import '../../core/services/app_session.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
 
@@ -109,10 +110,12 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       ),
     );
     if (amount == null || amount <= 0) return;
+    // فاز ۲ — ثبت کاربر وصول‌کننده (بند ۸: گزارش عملکرد)
     await PaymentRepo.insert(Payment(
       ticketId: widget.ticketId,
       amount: amount,
       kind: kind,
+      userId: AppSession.I.currentUser?.id,
     ));
     _load();
   }
@@ -132,8 +135,12 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       );
       if (ok != true) return;
     }
-    await TicketRepo.changeStatus(widget.ticketId, TicketStatus.delivered,
-        note: 'اقرارنامه تحویل‌گیری ثبت شد: دریافت کلیه قسمت‌های دستگاه');
+    await TicketRepo.changeStatus(
+      widget.ticketId,
+      TicketStatus.delivered,
+      userId: AppSession.I.currentUser?.id ?? 0,
+      note: 'اقرارنامه تحویل‌گیری ثبت شد: دریافت کلیه قسمت‌های دستگاه',
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('تحویل ثبت شد — اقرارنامه تحویل‌گیری در تاریخچه ذخیره شد.'),
@@ -252,12 +259,36 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
               ),
               const Divider(height: 24),
               Text('تاریخچه مراحل', style: Theme.of(context).textTheme.titleMedium),
-              ...log.map((e) => ListTile(
+              ...log.map((e) {
+                // فاز ۲ — نمایش کاربر و دلیل هر تغییر (بند ۸)
+                final uid = e['user_id'] as int?;
+                final reason = ((e['reason'] ?? '') as String).trim();
+                final note = ((e['note'] ?? '') as String).trim();
+                final from = (e['from_status'] ?? '') as String;
+                final to = (e['to_status'] ?? (e['status'] ?? '')) as String;
+                final hasFrom = from.isNotEmpty && from != to;
+                return FutureBuilder<String>(
+                  future: uid == null || uid == 0
+                      ? Future.value('سیستم')
+                      : UserRepo.displayNameOf(uid),
+                  builder: (_, snap) => ListTile(
                     dense: true,
                     leading: const Icon(Icons.flag, size: 18),
-                    title: Text(statusLabel((e['status'] ?? '') as String)),
-                    subtitle: Text('${(e['created_at'] ?? '') as String} ${(e['note'] ?? '') as String}'),
-                  )),
+                    title: Text(hasFrom
+                        ? '${statusLabel(from)} ← ${statusLabel(to)}'
+                        : statusLabel(to)),
+                    subtitle: Text(
+                      [
+                        'کاربر: ${snap.data ?? '...'}',
+                        if (reason.isNotEmpty) 'دلیل: $reason',
+                        if (note.isNotEmpty) note,
+                        (e['created_at'] ?? '') as String,
+                      ].join(' — '),
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                  ),
+                );
+              }),
             ],
           ),
         ),

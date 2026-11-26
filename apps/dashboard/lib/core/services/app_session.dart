@@ -5,6 +5,7 @@ import '../constants.dart';
 import '../models.dart';
 import '../repos.dart';
 import 'activation_service.dart';
+import 'auth_service.dart';
 import 'install_report_service.dart';
 import 'license_service.dart';
 import 'backup_service.dart';
@@ -21,6 +22,27 @@ class AppSession {
 
   /// وضعیت فعال‌سازی — پس از هر init تازه می‌شود (فاز ۱)
   ActivationStatus activationStatus = ActivationStatus.notActivated;
+
+  /// کاربر جاری — فاز ۲ (بند ۸). null یعنی هیچ‌کس وارد نشده
+  AuthUser? currentUser;
+
+  /// آیا کاربر جاری دسترسی داده‌شده را دارد؟
+  bool can(String permKey) => currentUser?.can(permKey) ?? false;
+
+  /// ورود کاربر — خروجی پیام خطا یا null در موفقیت
+  Future<String?> loginWith(String username, String password) async {
+    final (u, err) = await AuthService.login(username, password);
+    if (err.isNotEmpty || u == null) return err;
+    currentUser = u;
+    return null;
+  }
+
+  /// خروج کاربر جاری
+  Future<void> logout() async {
+    final u = currentUser;
+    currentUser = null;
+    if (u != null) await AuthService.logout(u);
+  }
 
   Future<void> init() async {
     // ۱) لایسنس و شمارنده نصب

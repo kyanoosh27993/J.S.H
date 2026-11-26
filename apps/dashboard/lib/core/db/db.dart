@@ -7,6 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../services/auth_service.dart' show AuthSeed;
+
 /// DDL کامل — جدول‌های فازهای بعدی هم از الان ساخته می‌شوند تا مهاجرت لازم نباشد.
 const String kSchema = '''
 CREATE TABLE IF NOT EXISTS settings (
@@ -160,10 +162,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
   detail TEXT DEFAULT '',
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'user',
+  salt TEXT NOT NULL DEFAULT '',
+  password_hash TEXT NOT NULL DEFAULT '',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_permissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  perm_key TEXT NOT NULL,
+  UNIQUE(user_id, perm_key)
+);
 CREATE INDEX IF NOT EXISTS idx_tickets_customer ON tickets(customer_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status, remind_at);
 CREATE INDEX IF NOT EXISTS idx_email_status ON email_queue(status);
+CREATE INDEX IF NOT EXISTS idx_statuslog_ticket ON ticket_status_log(ticket_id);
 ''';
 
 class Db {
@@ -183,20 +203,48 @@ class Db {
     await db.execute(kSchema);
     await _migrate(db);
     _db = db;
+    // فاز ۲: بذر اکانت مدیر پیش‌فرض و اکانت سازنده (قاعده ۱۲)
+    await AuthSeed.ensure();
     return db;
   }
 
   /// مهاجرت افزایشی — افزودن ستون‌های جدید به نصب‌های قدیمی (ایده‌مپوتنت)
   static Future<void> _migrate(Database db) async {
-    final cols = <String, List<String>>{
+    // ستون‌های متنی
+    final textCols = <String, List<String>>{
       'license_state': [
         'activation_code',
         'activation_expiry',
         'activated_at',
         'last_seen_date',
       ],
+      // فاز ۲ — واگذاری سفارش
+      'tickets': [
+        'assigned_at',
+      ],
+      // فاز ۲ — تاریخچه وضعیت با کاربر و دلیل
+      'ticket_status_log': [
+        'from_status',
+        'to_status',
+        'reason',
+      ],
     };
-    for (final e in cols.entries) {
+    // ستون‌های عددی/NULL
+    final intCols = <String, List<String>>{
+      'tickets': [
+        'created_by',
+        'assigned_to',
+        'assigned_by',
+      ],
+      'ticket_status_log': [
+        'user_id',
+        'assigned_to',
+      ],
+      'payments': [
+        'user_id',
+      ],
+    };
+    for (final e in textCols.entries) {
       try {
         final rows = await db.rawQuery('PRAGMA table_info(${e.key})');
         final existing = rows.map((r) => r['name'] as String).toSet();
@@ -210,6 +258,22 @@ class Db {
         // جدول تازه ساخته شده و ستون‌ها در اسکیما هستند
       }
     }
+    for (final e in intCols.entries) {
+      try {
+        final rows = await db.rawQuery('PRAGMA table_info(${e.key})');
+        final existing = rows.map((r) => r['name'] as String).toSet();
+        for (final c in e.value) {
+          if (!existing.contains(c)) {
+            await db.execute('ALTER TABLE ${e.key} ADD COLUMN $c INTEGER');
+          }
+        }
+      } catch (_) {
+        // جدول تازه ساخته شده و ستون‌ها در اسکیما هستند
+      }
+    }
+    // شاخص واگذاری — فقط بعد از افزودن ستون‌های فاز ۲ قابل ساخت است
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tickets_assigned ON tickets(assigned_to)');
   }
 
   static Future<String> dbPath() async {

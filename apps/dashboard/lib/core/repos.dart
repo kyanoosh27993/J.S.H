@@ -3,6 +3,8 @@ library;
 
 import 'db/db.dart';
 import 'models.dart';
+import 'services/auth_service.dart' show AuthUser, AuthService, kRoleCreator;
+import 'services/supervisor_service.dart' show AuditRepo;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class SettingsRepo {
@@ -153,25 +155,313 @@ class TicketRepo {
     return '$prefix${n.toString().padLeft(3, '0')}';
   }
 
-  static Future<void> changeStatus(int ticketId, String status,
-      {String note = ''}) async {
+  /// تغییر وضعیت با ثبت کاربر، دلیل و واگذاری — فاز ۲ (بند ۸)
+  /// userId = 0 یعنی سیستم (بدون کاربر — سازگاری با کدهای قبلی)
+  static Future<void> changeStatus(int ticketId, String to,
+      {int userId = 0,
+      String reason = '',
+      String note = '',
+      int? assignTo}) async {
     final t = await byId(ticketId);
     if (t == null) return;
-    t.status = status;
+    final from = t.status;
+    t.status = to;
+    if (assignTo != null) {
+      t.assignedTo = assignTo;
+      t.assignedBy = userId;
+      t.assignedAt = DateTime.now().toIso8601String();
+    }
     await update(t);
     final db = await Db.instance();
     await db.insert('ticket_status_log', {
       'ticket_id': ticketId,
-      'status': status,
+      'status': to, // ستون قدیمی — سازگاری با کد قبلی
+      'from_status': from,
+      'to_status': to,
+      'reason': reason,
       'note': note,
+      'user_id': userId,
+      'assigned_to': assignTo,
       'created_at': DateTime.now().toIso8601String(),
     });
+    await AuditRepo.log('status_change',
+        'سفارش #$ticketId: $from ← $to — کاربر #$userId${reason.isEmpty ? '' : ' — دلیل: $reason'}');
   }
 
   static Future<List<Map<String, Object?>>> statusLog(int ticketId) async {
     final db = await Db.instance();
     return db.query('ticket_status_log',
         where: 'ticket_id = ?', whereArgs: [ticketId], orderBy: 'id ASC');
+  }
+
+  /// واگذاری بدون تغییر وضعیت — پذیرش‌کننده کار را به شخص خاص می‌سپارد (بند ۸)
+  static Future<void> assign(
+      int ticketId, int assignTo, int byUserId) async {
+    final t = await byId(ticketId);
+    if (t == null) return;
+    t.assignedTo = assignTo;
+    t.assignedBy = byUserId;
+    t.assignedAt = DateTime.now().toIso8601String();
+    await update(t);
+    final db = await Db.instance();
+    await db.insert('ticket_status_log', {
+      'ticket_id': ticketId,
+      'status': t.status,
+      'from_status': t.status,
+      'to_status': t.status,
+      'reason': 'واگذاری سفارش به کاربر #$assignTo',
+      'user_id': byUserId,
+      'assigned_to': assignTo,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    await AuditRepo.log('ticket_assign',
+        'سفارش #$ticketId به کاربر #$assignTo واگذار شد — توسط #$byUserId');
+  }
+
+  /// قاعده بند ۸: برگشت وضعیت فقط توسط کاربری که آخرین تغییر را داده
+  /// (مدیر و سازنده همیشه مجازند)
+  static Future<bool> canRevert(int ticketId, AuthUser? u) async {
+    if (u == null) return false;
+    if (u.isAdmin) return true;
+    final db = await Db.instance();
+    final rows = await db.query('ticket_status_log',
+        where: 'ticket_id = ?',
+        whereArgs: [ticketId],
+        orderBy: 'id DESC',
+        limit: 1);
+    if (rows.isEmpty) return false;
+    return (rows.first['user_id'] ?? 0) == u.id;
+  }
+
+  /// گزارش عملکرد کاربران در بازه تاریخی (بند ۸ — مقایسه عملکرد)
+  /// خروجی: نام، تعداد تغییر وضعیت، پذیرش، تحویل، وصولی، سهم درصدی
+  static Future<List<Map<String, Object?>>> activityReport(
+      String fromIso, String toIso) async {
+    final db = await Db.instance();
+    final rows = await db.rawQuery('''
+      SELECT u.id, u.username, u.display_name, u.role,
+        (SELECT COUNT(*) FROM ticket_status_log l
+          WHERE l.user_id = u.id AND l.created_at >= ? AND l.created_at < ?
+            AND l.from_status != l.to_status) AS changes,
+        (SELECT COUNT(*) FROM ticket_status_log l
+          WHERE l.user_id = u.id AND l.created_at >= ? AND l.created_at < ?
+            AND l.to_status = 'intake') AS accepted,
+        (SELECT COUNT(*) FROM ticket_status_log l
+          WHERE l.user_id = u.id AND l.created_at >= ? AND l.created_at < ?
+            AND l.to_status = 'delivered') AS delivered,
+        (SELECT COUNT(*) FROM tickets t
+          WHERE t.created_by = u.id AND t.created_at >= ? AND t.created_at < ?) AS intakes,
+        (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
+          WHERE p.user_id = u.id AND p.created_at >= ? AND p.created_at < ?) AS collected
+      FROM users u
+      ORDER BY u.id ASC
+    ''', [
+      fromIso, toIso,
+      fromIso, toIso,
+      fromIso, toIso,
+      fromIso, toIso,
+      fromIso, toIso,
+    ]);
+    final total = rows.fold<int>(
+        0, (s, r) => s + ((r['collected'] ?? 0) as int));
+    return [
+      for (final r in rows)
+        {
+          ...r,
+          'share': total > 0
+              ? (((r['collected'] ?? 0) as int) * 100 / total)
+              : 0.0,
+        }
+    ];
+  }
+}
+
+/// ریپازیتوری کاربران و دسترسی‌ها — فاز ۲ (بند ۸ + قاعده ۱۲)
+class UserRepo {
+  /// فهرست کاربران — بدون هش رمز
+  static Future<List<Map<String, Object?>>> list() async {
+    final db = await Db.instance();
+    return db.query('users', columns: [
+      'id',
+      'username',
+      'display_name',
+      'role',
+      'is_active',
+      'created_at',
+      'updated_at',
+    ], orderBy: 'id ASC');
+  }
+
+  static Future<Map<String, Object?>?> byUsernameRow(String username) async {
+    final db = await Db.instance();
+    final rows = await db.query('users',
+        where: 'username = ?',
+        whereArgs: [username.trim()],
+        limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<AuthUser?> byId(int id) async {
+    final db = await Db.instance();
+    final rows = await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    final r = rows.first;
+    return AuthUser(
+      id: r['id'] as int,
+      username: (r['username'] ?? '') as String,
+      displayName: (r['display_name'] ?? '') as String,
+      role: (r['role'] ?? 'user') as String,
+      isActive: ((r['is_active'] ?? 1) as int) == 1,
+      perms: (await permsOf(id)).toSet(),
+    );
+  }
+
+  /// نام نمایشی کاربر — برای کارت‌های کارتابل و گزارش‌ها
+  static Future<String> displayNameOf(int id) async {
+    final db = await Db.instance();
+    final rows = await db.query('users',
+        columns: ['username', 'display_name'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1);
+    if (rows.isEmpty) return '';
+    final dn = (rows.first['display_name'] ?? '') as String;
+    return dn.isEmpty ? ((rows.first['username'] ?? '') as String) : dn;
+  }
+
+  /// افزودن کاربر — خروجی: (id یا null، پیام خطا)
+  static Future<(int?, String)> create({
+    required String username,
+    required String displayName,
+    required String role,
+    required String password,
+  }) async {
+    final u = username.trim();
+    if (u.isEmpty) return (null, 'نام کاربری الزامی است');
+    if (password.length < 4) return (null, 'رمز عبور حداقل ۴ نویسه باشد');
+    if (await byUsernameRow(u) != null) {
+      return (null, 'این نام کاربری قبلاً ثبت شده است');
+    }
+    final salt = AuthService.randomSalt();
+    final db = await Db.instance();
+    final now = DateTime.now().toIso8601String();
+    final id = await db.insert('users', {
+      'username': u,
+      'display_name': displayName.trim(),
+      'role': role,
+      'salt': salt,
+      'password_hash': AuthService.hash(salt, password),
+      'is_active': 1,
+      'created_at': now,
+      'updated_at': now,
+    });
+    await AuditRepo.log('user_create', 'کاربر "$u" با نقش $role ایجاد شد');
+    return (id, '');
+  }
+
+  /// تغییر پروفایل — اکانت سازنده از بیرون قابل تغییر نیست (قاعده ۱۲)
+  static Future<String?> updateProfile(
+      {required int id,
+      required String displayName,
+      required String role,
+      required bool isActive,
+      required AuthUser? actor}) async {
+    final db = await Db.instance();
+    final rows = await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return 'کاربر یافت نشد';
+    if ((rows.first['role'] ?? '') == kRoleCreator) {
+      return 'اکانت سازنده قابل ویرایش نیست';
+    }
+    if (actor != null && actor.id == id && !isActive) {
+      return 'نمی‌توانید اکانت خودتان را غیرفعال کنید';
+    }
+    await db.update('users', {
+      'display_name': displayName.trim(),
+      'role': role,
+      'is_active': isActive ? 1 : 0,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log('user_update', 'ویرایش کاربر #$id');
+    return null;
+  }
+
+  /// تغییر نام کاربری — بند ۸: مدیر باید بتواند نام کاربری خودش را عوض کند
+  static Future<String?> setUsername(
+      {required int id, required String username, required AuthUser? actor}) async {
+    final u = username.trim();
+    if (u.isEmpty) return 'نام کاربری الزامی است';
+    final db = await Db.instance();
+    final rows = await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return 'کاربر یافت نشد';
+    if ((rows.first['role'] ?? '') == kRoleCreator) {
+      return 'نام کاربری اکانت سازنده قابل تغییر نیست';
+    }
+    final clash = await byUsernameRow(u);
+    if (clash != null && (clash['id'] as int) != id) {
+      return 'این نام کاربری قبلاً ثبت شده است';
+    }
+    await db.update('users', {
+      'username': u,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log(
+        'user_rename', 'تغییر نام کاربری #$id به «$u» — توسط ${actor?.username ?? '-'}');
+    return null;
+  }
+
+  /// تغییر رمز — سازنده قابل تغییر نیست
+  static Future<String?> setPassword(
+      {required int id, required String password}) async {
+    if (password.length < 4) return 'رمز عبور حداقل ۴ نویسه باشد';
+    final db = await Db.instance();
+    final rows = await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return 'کاربر یافت نشد';
+    if ((rows.first['role'] ?? '') == kRoleCreator) {
+      return 'رمز اکانت سازنده قابل تغییر نیست';
+    }
+    final salt = AuthService.randomSalt();
+    await db.update('users', {
+      'salt': salt,
+      'password_hash': AuthService.hash(salt, password),
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log('user_password', 'تغییر رمز کاربر #$id');
+    return null;
+  }
+
+  /// حذف کاربر — سازنده هرگز حذف نمی‌شود (قاعده ۱۲)
+  static Future<String?> delete(int id, {AuthUser? actor}) async {
+    final db = await Db.instance();
+    final rows = await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return 'کاربر یافت نشد';
+    if ((rows.first['role'] ?? '') == kRoleCreator) {
+      return 'اکانت سازنده قابل حذف نیست';
+    }
+    if (actor != null && actor.id == id) {
+      return 'نمی‌توانید اکانت خودتان را حذف کنید';
+    }
+    await db.delete('user_permissions', where: 'user_id = ?', whereArgs: [id]);
+    await db.delete('users', where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log('user_delete', 'حذف کاربر #$id');
+    return null;
+  }
+
+  static Future<List<String>> permsOf(int userId) async {
+    final db = await Db.instance();
+    final rows = await db.query('user_permissions',
+        columns: ['perm_key'], where: 'user_id = ?', whereArgs: [userId]);
+    return rows.map((r) => (r['perm_key'] ?? '') as String).toList();
+  }
+
+  static Future<void> setPerms(int userId, List<String> keys) async {
+    final db = await Db.instance();
+    await db.delete('user_permissions', where: 'user_id = ?', whereArgs: [userId]);
+    for (final k in keys) {
+      await db
+          .insert('user_permissions', {'user_id': userId, 'perm_key': k});
+    }
+    await AuditRepo.log('user_perms',
+        'دسترسی‌های کاربر #$userId به‌روزرسانی شد (${keys.length} کلید)');
   }
 }
 

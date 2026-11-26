@@ -10,6 +10,7 @@ import 'package:signature/signature.dart';
 import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
+import '../../core/services/app_session.dart';
 import '../../core/services/pdf_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
@@ -27,6 +28,10 @@ class _IntakePageState extends State<IntakePage> {
   List<Customer> customers = [];
   Customer? selected;
   bool newCustomer = false;
+
+  // فاز ۲ — واگذاری سفارش برای تشخیص (بند ۸)
+  List<Map<String, Object?>> techUsers = [];
+  int? _assignTo;
 
   final cName = TextEditingController();
   final cFather = TextEditingController();
@@ -64,7 +69,16 @@ class _IntakePageState extends State<IntakePage> {
 
   Future<void> _loadCustomers() async {
     final l = await CustomerRepo.search('');
-    if (mounted) setState(() => customers = l);
+    final users = (await UserRepo.list())
+        .where((u) => ((u['is_active'] ?? 1) as int) == 1)
+        .toList();
+    if (!mounted) return;
+    setState(() {
+      customers = l;
+      techUsers = users;
+      // پیش‌فرض واگذاری: خود کاربر جاری (بند ۸)
+      _assignTo ??= AppSession.I.currentUser?.id;
+    });
   }
 
   Future<void> _submit() async {
@@ -99,8 +113,9 @@ class _IntakePageState extends State<IntakePage> {
       ..serial = dSerial.text.trim();
     device.id = await DeviceRepo.insert(device);
 
-    // ۳) سفارش
+    // ۳) سفارش — با ثبت‌کننده و واگذاری برای تشخیص (بند ۸)
     final code = await TicketRepo.nextCode();
+    final me = AppSession.I.currentUser;
     final ticket = Ticket(
       code: code,
       customerId: customer.id!,
@@ -114,15 +129,20 @@ class _IntakePageState extends State<IntakePage> {
       depositAmount: depositVal,
       accessories: accessories.toList(),
       termsAccepted: true,
+      createdBy: me?.id,
+      assignedTo: _assignTo ?? me?.id,
+      assignedBy: me?.id,
+      assignedAt: DateTime.now().toIso8601String(),
     );
     ticket.id = await TicketRepo.insert(ticket);
 
-    // ۴) بیعانه
+    // ۴) بیعانه — با ثبت کاربر وصول‌کننده (بند ۸)
     if (depositVal > 0) {
       await PaymentRepo.insert(Payment(
         ticketId: ticket.id!,
         amount: depositVal,
         kind: 'deposit',
+        userId: me?.id,
       ));
     }
 
@@ -257,6 +277,31 @@ class _IntakePageState extends State<IntakePage> {
                     label: 'بیعانه دریافتی (تومان)',
                     controller: deposit,
                     hint: '0',
+                  ),
+                ),
+              ],
+            ),
+            // فاز ۲ — واگذاری سفارش به کاربر خاص برای تشخیص (بند ۸)
+            Row(
+              children: [
+                const SizedBox(width: 4),
+                const Icon(Icons.handyman, size: 16, color: Colors.deepOrange),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<int?>(
+                    initialValue: _assignTo,
+                    items: [
+                      for (final u in techUsers)
+                        DropdownMenuItem(
+                          value: u['id'] as int,
+                          child: Text(
+                              'واگذاری برای تشخیص: ${((u['display_name'] ?? '') as String).isEmpty ? u['username'] : u['display_name']}',
+                              style: const TextStyle(fontSize: 12.5)),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() => _assignTo = v),
+                    decoration: const InputDecoration(
+                        labelText: 'واگذاری سفارش به کاربر (مسئول تشخیص)'),
                   ),
                 ),
               ],

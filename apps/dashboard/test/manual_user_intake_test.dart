@@ -182,10 +182,26 @@ void main() {
       });
       await tester.pump(const Duration(milliseconds: 200));
 
-      // ۲) انتخاب مشتری از CRM — دراپ‌داون واقعی
-      await tapHere(tester, find.byType(DropdownButtonFormField<Customer>));
-      await tester.pump(const Duration(milliseconds: 350));
-      final itemFinder = find.text('${o['name']} — ${toPersianDigits(o['phone']!)}').last;
+      // ۲) انتخاب مشتری از CRM — دراپ‌داون واقعی (با تلاش مجدد تا باز شدن منو)
+      Finder itemFinder = find.text('');
+      var opened = false;
+      for (var k = 0; k < 6 && !opened; k++) {
+        await tapHere(tester, find.byType(DropdownButtonFormField<Customer>));
+        await tester.pump(const Duration(milliseconds: 350));
+        final exact =
+            find.text('${o['name']} — ${toPersianDigits(o['phone']!)}');
+        if (exact.evaluate().isNotEmpty) {
+          itemFinder = exact.last;
+          opened = true;
+        } else {
+          await tester.runAsync(() async {
+            await Future.delayed(const Duration(milliseconds: 150));
+          });
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+      }
+      expect(opened, isTrue,
+          reason: 'منوی انتخاب مشتری باز نشد — بارگذاری CRM کامل نشده است');
       if (itemFinder.evaluate().isEmpty) {
         await tester.drag(find.byType(Scrollable).last, const Offset(0, -120));
         await tester.pump(const Duration(milliseconds: 150));

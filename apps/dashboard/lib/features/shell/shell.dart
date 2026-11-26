@@ -24,13 +24,16 @@ import '../reminders/reminders.dart';
 import '../settings/settings.dart';
 import '../settings/theme_settings.dart';
 import '../support/support.dart';
+import '../users/users_page.dart';
 import '../warranty/warranty_page.dart';
 
 class _NavItem {
   final IconData icon;
   final String label;
+  final String permKey;
   final List<String> sections;
-  const _NavItem(this.icon, this.label, {this.sections = const []});
+  const _NavItem(this.icon, this.label,
+      {required this.permKey, this.sections = const []});
 }
 
 class MainShell extends StatefulWidget {
@@ -38,7 +41,14 @@ class MainShell extends StatefulWidget {
 
   /// روزهای باقیمانده اعتبار کد فعال‌سازی — اگر بین ۱ تا ۷ باشد، هشدار هر ورود نمایش داده می‌شود (بند ۱۸)
   final int? expiryNoticeDays;
-  const MainShell({super.key, required this.session, this.expiryNoticeDays});
+
+  /// فاز ۲ — خروج کاربر جاری به صفحه ورود
+  final VoidCallback onLogout;
+  const MainShell(
+      {super.key,
+      required this.session,
+      this.expiryNoticeDays,
+      required this.onLogout});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -88,39 +98,69 @@ class _MainShellState extends State<MainShell> {
 
   static const _items = <_NavItem>[
     _NavItem(Icons.dashboard_rounded, 'خانه',
+        permKey: 'page.home',
         sections: ['خلاصه امروز', 'نمودارها', 'پیش‌بینی درآمد']),
     _NavItem(Icons.add_box_rounded, 'پذیرش',
+        permKey: 'page.intake',
         sections: ['فرم رسید سپردن', 'چک‌لیست لوازم', 'امضای مشتری']),
     _NavItem(Icons.view_kanban_rounded, 'کارتابل',
+        permKey: 'page.board',
         sections: ['همه مراحل', 'آماده تحویل', 'انتظار قطعه']),
     _NavItem(Icons.people_alt_rounded, 'مشتریان',
+        permKey: 'page.customers',
         sections: ['لیست', 'تاریخچه', 'برچسب‌ها']),
     _NavItem(Icons.receipt_long_rounded, 'فاکتورها',
+        permKey: 'page.invoices',
         sections: ['همه فاکتورها', 'تسویه‌شده', 'بدهکار']),
     _NavItem(Icons.calendar_month_rounded, 'تقویم',
+        permKey: 'page.calendar',
         sections: ['ماه جاری', 'تعطیلات رسمی', 'خروجی Google Calendar']),
     _NavItem(Icons.alarm_rounded, 'یادآوری‌ها',
+        permKey: 'page.reminders',
         sections: ['پنجره یادآوری', 'ثبت‌شده‌ها']),
     _NavItem(Icons.auto_awesome_rounded, 'دستیار',
+        permKey: 'page.assistant',
         sections: ['کارهای روتین', 'گزارش‌های فوری']),
     _NavItem(Icons.verified_user_rounded, 'گارانتی',
+        permKey: 'page.warranty',
         sections: ['فعال', 'نزدیک انقضا', 'منقضی']),
     _NavItem(Icons.settings_backup_restore_rounded, 'دیتابیس',
+        permKey: 'page.dbmanager',
         sections: ['بک‌آپ دستی', 'بک‌آپ اتوماتیک', 'پوشه', 'منطقه خطر']),
+    _NavItem(Icons.manage_accounts_rounded, 'کاربران',
+        permKey: 'page.users',
+        sections: ['فهرست کاربران', 'دسترسی‌ها', 'عملکرد کاربران']),
     _NavItem(Icons.settings_rounded, 'تنظیمات',
+        permKey: 'page.settings',
         sections: ['فروشگاه', 'ایمیل', 'یادآوری', 'گارانتی']),
     _NavItem(Icons.palette_rounded, 'تم و ظاهر',
+        permKey: 'page.theme',
         sections: ['سه تم پیش‌فرض', 'فونت متن و اعداد', 'شخصی‌سازی ریز']),
     _NavItem(Icons.support_agent_rounded, 'پشتیبانی',
+        permKey: 'page.support',
         sections: ['اطلاعات سازنده', 'لایسنس']),
   ];
+
+  /// فهرست نمایان برای کاربر جاری — فاز ۲ (دسترسی تفکیکی، بند ۸)
+  List<int> get _visibleIndexes {
+    final me = widget.session.currentUser;
+    final out = <int>[];
+    for (var i = 0; i < _items.length; i++) {
+      if (me?.can(_items[i].permKey) ?? false) out.add(i);
+    }
+    return out.isEmpty ? const [0] : out;
+  }
 
   @override
   Widget build(BuildContext context) {
     final cfg = AppThemeScope.of(context);
     final p = cfg.palette;
     final isNarrow = MediaQuery.of(context).size.width < 760;
+    // اگر صفحه جاری برای این کاربر مجاز نیست، به نخستین صفحه مجاز برمی‌گردیم
+    final visible = _visibleIndexes;
+    if (!visible.contains(index)) index = visible.first;
     final item = _items[index];
+    final me = widget.session.currentUser;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -184,6 +224,36 @@ class _MainShellState extends State<MainShell> {
               tooltip: 'شخصی‌سازی کامل ظاهر',
               icon: Icon(Icons.tune, size: 20, color: p.textSecondary),
               onPressed: () => setState(() => index = 11),
+            ),
+            // فاز ۲ — کاربر جاری + خروج
+            if (me != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Tooltip(
+                  message: '${me.username} — ${me.roleLabelFa}',
+                  child: Chip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: Icon(
+                      me.isCreator
+                          ? Icons.engineering
+                          : me.isAdmin
+                              ? Icons.admin_panel_settings
+                              : Icons.person,
+                      size: 15,
+                      color: me.isCreator ? Colors.deepPurple : null,
+                    ),
+                    label: AppText(me.bestName,
+                        style: const TextStyle(fontSize: 11.5)),
+                  ),
+                ),
+              ),
+            IconButton(
+              tooltip: 'خروج از حساب',
+              icon: Icon(Icons.logout, size: 20, color: p.textSecondary),
+              onPressed: () async {
+                await widget.session.logout();
+                widget.onLogout();
+              },
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -314,7 +384,7 @@ class _MainShellState extends State<MainShell> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
                 children: [
-                  for (var i = 0; i < _items.length; i++) _railItem(i, open, cfg),
+                  for (final i in _visibleIndexes) _railItem(i, open, cfg),
                 ],
               ),
             ),
@@ -444,7 +514,7 @@ class _MainShellState extends State<MainShell> {
               ],
             ),
           ),
-          for (var i = 0; i < _items.length; i++)
+          for (final i in _visibleIndexes)
             ListTile(
               leading: Icon(_items[i].icon,
                   color: index == i ? p.primary : p.textSecondary),
@@ -457,6 +527,16 @@ class _MainShellState extends State<MainShell> {
                 Navigator.pop(context);
               },
             ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('خروج از حساب'),
+            onTap: () async {
+              Navigator.pop(context);
+              await widget.session.logout();
+              widget.onLogout();
+            },
+          ),
         ],
       ),
     );
@@ -465,7 +545,7 @@ class _MainShellState extends State<MainShell> {
   Widget _page(int i) {
     switch (i) {
       case 0:
-        return DashboardPage(session: widget.session, onGo: (n) => setState(() => index = n));
+        return DashboardPage(session: widget.session, onGo: _goFromHome);
       case 1:
         return const IntakePage();
       case 2:
@@ -485,14 +565,22 @@ class _MainShellState extends State<MainShell> {
       case 9:
         return const DbManagerPage();
       case 10:
-        return const SettingsPage();
+        return const UsersPage();
       case 11:
-        return const ThemeSettingsPage();
+        return const SettingsPage();
       case 12:
+        return const ThemeSettingsPage();
+      case 13:
         return SupportPage(session: widget.session);
       default:
         return const SizedBox();
     }
+  }
+
+  /// پرش از صفحه خانه — اگر صفحه مقصد مجاز نبود، نخستین صفحه مجاز
+  void _goFromHome(int n) {
+    final visible = _visibleIndexes;
+    setState(() => index = visible.contains(n) ? n : visible.first);
   }
 }
 

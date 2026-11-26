@@ -16,6 +16,7 @@ import 'core/services/reminder_service.dart';
 import 'features/activation/activation_page.dart';
 import 'features/onboarding/onboarding.dart';
 import 'features/shell/shell.dart';
+import 'features/users/login_page.dart';
 import 'core/theme/theme_config.dart';
 import 'features/support/blocked.dart';
 
@@ -197,7 +198,15 @@ class _RootGateState extends State<_RootGate> {
         if (s.activationStatus == ActivationStatus.notActivated) {
           return ActivationPage(session: s, onActivated: () => setState(() {}));
         }
-        return MainShell(session: s, expiryNoticeDays: _expiryNoticeDays());
+        // فاز ۲ — دروازه ورود کاربر (بند ۸): بدون احراز هویت، شل باز نمی‌شود
+        if (s.currentUser == null) {
+          return LoginPage(session: s, onLoggedIn: () => setState(() {}));
+        }
+        return MainShell(
+          session: s,
+          expiryNoticeDays: _expiryNoticeDays(),
+          onLogout: () => setState(() {}),
+        );
     }
   }
 }

@@ -105,6 +105,12 @@ class Ticket {
   String createdAt;
   String updatedAt;
 
+  // فاز ۲ — ثبت‌کننده و واگذاری سفارش (بند ۸)
+  int? createdBy; // کاربر ثبت‌کننده
+  int? assignedTo; // کاربر مسئول فعلی کار
+  int? assignedBy; // کاربری که واگذار کرده
+  String assignedAt; // زمان آخرین واگذاری
+
   Ticket({
     this.id,
     this.code = '',
@@ -122,6 +128,10 @@ class Ticket {
     List<String>? accessories,
     this.termsAccepted = false,
     this.signaturePath = '',
+    this.createdBy,
+    this.assignedTo,
+    this.assignedBy,
+    this.assignedAt = '',
     String? createdAt,
   })  : accessories = accessories ?? [],
         createdAt = createdAt ?? DateTime.now().toIso8601String(),
@@ -144,6 +154,10 @@ class Ticket {
         accessories: _parseAccessories((m['accessories'] ?? '[]') as String),
         termsAccepted: ((m['terms_accepted'] ?? 0) as int) == 1,
         signaturePath: (m['signature_path'] ?? '') as String,
+        createdBy: m['created_by'] as int?,
+        assignedTo: m['assigned_to'] as int?,
+        assignedBy: m['assigned_by'] as int?,
+        assignedAt: (m['assigned_at'] ?? '') as String,
         createdAt: (m['created_at'] ?? '') as String,
       );
 
@@ -181,6 +195,10 @@ class Ticket {
         'accessories': accessoriesJson,
         'terms_accepted': termsAccepted ? 1 : 0,
         'signature_path': signaturePath,
+        if (createdBy != null) 'created_by': createdBy,
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        if (assignedBy != null) 'assigned_by': assignedBy,
+        'assigned_at': assignedAt,
         'created_at': createdAt,
         'updated_at': updatedAt,
       };
@@ -240,6 +258,7 @@ class Payment {
   int amount;
   String method; // cash | card | transfer
   String kind; // deposit | final
+  int? userId; // فاز ۲ — کاربر وصول‌کننده (بند ۸: گزارش عملکرد)
   String createdAt;
 
   Payment({
@@ -248,6 +267,7 @@ class Payment {
     required this.amount,
     this.method = 'cash',
     this.kind = 'deposit',
+    this.userId,
     String? createdAt,
   }) : createdAt = createdAt ?? DateTime.now().toIso8601String();
 
@@ -257,6 +277,7 @@ class Payment {
         amount: m['amount'] as int,
         method: (m['method'] ?? 'cash') as String,
         kind: (m['kind'] ?? 'deposit') as String,
+        userId: m['user_id'] as int?,
         createdAt: (m['created_at'] ?? '') as String,
       );
 
@@ -266,6 +287,7 @@ class Payment {
         'amount': amount,
         'method': method,
         'kind': kind,
+        if (userId != null) 'user_id': userId,
         'created_at': createdAt,
       };
 }

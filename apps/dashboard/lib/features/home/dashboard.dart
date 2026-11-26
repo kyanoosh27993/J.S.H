@@ -4,10 +4,12 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/repos.dart';
+import '../../core/models.dart';
 import '../../core/services/app_session.dart';
 import '../../core/services/forecast_service.dart';
 import '../../core/theme/theme_config.dart';
 import '../../core/utils.dart';
+import '../../core/constants.dart';
 import '../../shared/charts/modern_charts.dart';
 import '../../shared/widgets/app_text.dart';
 
@@ -31,6 +33,9 @@ class _DashboardPageState extends State<DashboardPage> {
   List<ChartPoint> receivableByStatus = [];
   List<ChartPoint> revenueLine = [];
   int dashedFrom = -1;
+
+  // فاز ۲ — کارهای در دست کاربران (بند ۸)
+  List<_UserWork> userWorks = [];
 
   @override
   void initState() {
@@ -67,6 +72,26 @@ class _DashboardPageState extends State<DashboardPage> {
     final now = DateTime.now();
     final monthPrefix = '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
+    // فاز ۲ — گروه‌بندی سفارش‌های باز بر اساس کاربر مسئول + زمان آخرین تغییر (بند ۸)
+    final names = <int, String>{};
+    for (final u in await UserRepo.list()) {
+      final dn = (u['display_name'] ?? '') as String;
+      names[u['id'] as int] =
+          dn.isEmpty ? (u['username'] ?? '') as String : dn;
+    }
+    final works = <int, List<Ticket>>{};
+    final lastChange = <int, String>{};
+    for (final t in tickets) {
+      if (t.status == TicketStatus.delivered) continue;
+      final uid = t.assignedTo;
+      if (uid == null) continue;
+      works.putIfAbsent(uid, () => []).add(t);
+      final log = await TicketRepo.statusLog(t.id!);
+      if (log.isNotEmpty) {
+        lastChange[uid] = log.last['created_at'] as String? ?? '';
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       openTickets = tickets.where((t) => t.status != 'delivered').length;
@@ -89,6 +114,15 @@ class _DashboardPageState extends State<DashboardPage> {
         ...future.map((f) => ChartPoint(f.label, f.value)),
       ];
       dashedFrom = forecast.length;
+      userWorks = [
+        for (final e in works.entries)
+          _UserWork(
+            userName: names[e.key] ?? 'کاربر ${e.key}',
+            userId: e.key,
+            tickets: e.value,
+            lastChange: lastChange[e.key] ?? '',
+          ),
+      ]..sort((a, b) => b.tickets.length.compareTo(a.tickets.length));
       loading = false;
     });
   }
@@ -140,6 +174,9 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
           const SizedBox(height: 16),
+          // ── فاز ۲ — کارهای در دست کاربران (بند ۸) ──
+          if (userWorks.isNotEmpty) _userWorkCard(),
+          const SizedBox(height: 12),
           if (cfg.showChartsOnDashboard) ...[
             Wrap(
               spacing: 12,
@@ -189,6 +226,93 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
       ),
     );
+  }
+
+  /// کارت «چه کاری در دست چه کاربری است» — بند ۸
+  Widget _userWorkCard() {
+    final cfg = AppThemeScope.of(context);
+    final p = cfg.palette;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.handyman, size: 18, color: Colors.deepOrange),
+                const SizedBox(width: 8),
+                AppText('کارهای در دست کاربران — چه کاری در چه وضعیتی نزد چه کسی است',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: p.textSecondary)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (final w in userWorks)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 150,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person, size: 15, color: Colors.blueGrey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: AppText(w.userName,
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          for (final t in w.tickets.take(8))
+                            Tooltip(
+                              message:
+                                  '${t.code} — ${statusLabel(t.status)}',
+                              child: Chip(
+                                visualDensity: VisualDensity.compact,
+                                label: AppText(
+                                    '${toPersianDigits(t.code)} · ${statusLabel(t.status)}',
+                                    style: const TextStyle(fontSize: 10.5)),
+                              ),
+                            ),
+                          if (w.tickets.length > 8)
+                            AppText(
+                                '+ ${toPersianDigits('${w.tickets.length - 8}')} سفارش دیگر',
+                                style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: p.textSecondary)),
+                        ],
+                      ),
+                    ),
+                    if (w.lastChange.isNotEmpty)
+                      AppText(
+                          'آخرین تغییر: ${_faTime(w.lastChange)}',
+                          style: TextStyle(
+                              fontSize: 10.5, color: p.textSecondary)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _faTime(String iso) {
+    final d = DateTime.tryParse(iso);
+    return d == null ? '-' : shamsiDateTime(d);
   }
 
   Widget _kpi(String label, num value, IconData icon, Color color,
@@ -261,4 +385,18 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+}
+
+/// فاز ۲ — خلاصه کار در دست یک کاربر (بند ۸)
+class _UserWork {
+  final String userName;
+  final int userId;
+  final List<Ticket> tickets;
+  final String lastChange;
+  const _UserWork({
+    required this.userName,
+    required this.userId,
+    required this.tickets,
+    required this.lastChange,
+  });
 }
