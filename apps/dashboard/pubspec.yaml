@@ -12,7 +12,7 @@ dependencies:
   # پایگاه‌داده محلی SQLite (ویندوز + اندروید)
   sqflite_common_ffi: ^2.3.3
   # کتابخانه بومی sqlite3 برای اندروید/ویندوز — بدون آن FFI روی اندروید کرش می‌کند
-  sqlite3_flutter_libs: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.38
   path_provider: ^2.1.4
   path: ^1.9.0
   # ساخت PDF رسید با فونت فارسی
