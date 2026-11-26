@@ -140,7 +140,8 @@ class Order:
             row_no,
             self.order_id,
             self.customer,
-            self.phone,
+            # شماره تلفن باید متنی بماند تا صفر ابتدای آن توسط Sheets حذف نشود
+            f"'{self.phone}" if self.phone.startswith("0") else self.phone,
             self.device,
             self.problem,
             format_jalali(self.due_date),
