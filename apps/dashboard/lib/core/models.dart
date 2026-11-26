@@ -111,6 +111,9 @@ class Ticket {
   int? assignedBy; // کاربری که واگذار کرده
   String assignedAt; // زمان آخرین واگذاری
 
+  /// کش نام مشتری برای کارتابل لیستی — ذخیره در بانک نمی‌شود
+  String? customerNameCache;
+
   Ticket({
     this.id,
     this.code = '',

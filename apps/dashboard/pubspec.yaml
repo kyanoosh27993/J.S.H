@@ -1,7 +1,7 @@
 name: jsh_service_dashboard
 description: داشبورد تعمیرات و خدمات — سامانه مدیریت فروشگاه تعمیرات موبایل و لوازم الکتریکی (پروژه J.S.H)
 publish_to: "none"
-version: 0.6.0
+version: 0.7.0
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

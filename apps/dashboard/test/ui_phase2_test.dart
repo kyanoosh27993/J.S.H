@@ -167,8 +167,20 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    // فاز ۳ — لودینگ با I/O واقعی: تناوب runAsync/pump تا پایان لودینگ
+    await tester.pump(const Duration(milliseconds: 100));
+    for (var k = 0; k < 25; k++) {
+      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('کارتابل تعمیرات'), findsOneWidget);
+    // باز کردن درخت — جلوگیری از تایمر معلق در پایان تست
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 300));
   });
 }
 

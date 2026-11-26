@@ -65,6 +65,15 @@ class CustomerRepo {
     final rows = await db.query('customers', where: 'id = ?', whereArgs: [id]);
     return rows.isEmpty ? null : Customer.fromMap(rows.first);
   }
+
+  /// نقشه id→نام همه مشتریان — برای کارتابل لیستی (قاعده ۱۱: یک کوئری به‌جای N+1)
+  static Future<Map<int, String>> nameMap() async {
+    final db = await Db.instance();
+    final rows = await db.query('customers', columns: ['id', 'name']);
+    return {
+      for (final r in rows) (r['id'] as int): (r['name'] ?? '') as String,
+    };
+  }
 }
 
 class DeviceRepo {

@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
+import '../../core/services/delivery_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
 
@@ -121,31 +122,48 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   }
 
   Future<void> _deliver() async {
-    if (remaining > 0) {
-      final ok = await showDialog<bool>(
+    // فاز ۳ (بند ۱۱): تحویل با تاییدیه و تسویه — پیش‌فاکتور → فاکتور
+    final rem = await DeliveryService.remainingOf(t!);
+    if (!mounted) return;
+    DeliveryDecision? choice;
+    if (rem > 0) {
+      choice = await showDialog<DeliveryDecision>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('مبلغ تسویه نشده'),
-          content: Text('باقیمانده ${moneyToman(remaining)} است. با وجود بدهی، تحویل ثبت شود؟'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('خیر')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('بله، تحویل بده')),
-          ],
+        builder: (ctx) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('تاییدیه تحویل'),
+            content: Text(
+                'باقیمانده تسویه: ${moneyToman(rem)}\n\n'
+                'با تحویل، پیش‌فاکتور به فاکتور قطعی تبدیل می‌شود.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('انصراف')),
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, DeliveryDecision.deliverWithDebt),
+                child: const Text('تحویل با بدهی (تایید می‌کنم)',
+                    style: TextStyle(color: Colors.red)),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, DeliveryDecision.settleAndDeliver),
+                child: const Text('تسویه کامل و تحویل'),
+              ),
+            ],
+          ),
         ),
       );
-      if (ok != true) return;
+    } else {
+      choice = DeliveryDecision.settleAndDeliver;
     }
-    await TicketRepo.changeStatus(
-      widget.ticketId,
-      TicketStatus.delivered,
-      userId: AppSession.I.currentUser?.id ?? 0,
-      note: 'اقرارنامه تحویل‌گیری ثبت شد: دریافت کلیه قسمت‌های دستگاه',
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('تحویل ثبت شد — اقرارنامه تحویل‌گیری در تاریخچه ذخیره شد.'),
-      ));
-    }
+    if (choice == null) return;
+    final result = await DeliveryService.deliver(t!, decision: choice);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(result.message),
+    ));
     _load();
   }
 

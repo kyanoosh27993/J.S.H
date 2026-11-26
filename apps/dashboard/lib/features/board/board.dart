@@ -1,7 +1,7 @@
-/// کارتابل کانبان تعمیرات (S-01) — جابه‌جایی سفارش بین مراحل
-/// فاز ۲ (بند ۸): تغییر وضعیت با ثبت کاربر و دلیل، واگذاری سفارش به کاربر،
-/// قاعده برگشت (فقط کاربری که آخرین تغییر را داده یا مدیر/سازنده) و
-/// نمایش مسئول فعلی هر سفارش روی کارت.
+/// کارتابل تعمیرات — بازطراحی کامل فاز ۳ (بند ۱۱)
+/// نمایش لیستی رنگی به‌جای کانبان عریض؛ اسکرول کامل عمودی + جستجو + فیلتر
+/// وضعیت/مسئول؛ تغییر وضعیت با کاربر و دلیل (فاز ۲)؛ تحویل با تاییدیه و
+/// تسویه (بند ۱۱)؛ برگشت وضعیت فقط توسط تغییردهندهٔ آخر؛ تاریخچه هر سفارش.
 library;
 
 import 'package:flutter/material.dart';
@@ -11,10 +11,24 @@ import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/delivery_service.dart';
 import '../../core/utils.dart';
-import '../../core/warranty.dart';
 import '../../shared/widgets/app_text.dart';
 import '../tickets/ticket_detail.dart';
+
+/// رنگ هر وضعیت — کارتابل لیستی رنگی (بند ۱۱)
+class StatusStyle {
+  static const Map<String, Color> colors = {
+    TicketStatus.intake: Color(0xFF3B82F6), // آبی
+    TicketStatus.diagnosis: Color(0xFF8B5CF6), // بنفش
+    TicketStatus.waitingPart: Color(0xFFF59E0B), // کهربایی
+    TicketStatus.repairing: Color(0xFFEF4444), // قرمز
+    TicketStatus.testing: Color(0xFF14B8A6), // سبزآبی
+    TicketStatus.ready: Color(0xFF22C55E), // سبز
+    TicketStatus.delivered: Color(0xFF6B7280), // خاکستری
+  };
+  static Color of(String status) => colors[status] ?? Colors.blueGrey;
+}
 
 class BoardPage extends StatefulWidget {
   const BoardPage({super.key});
@@ -24,9 +38,15 @@ class BoardPage extends StatefulWidget {
 }
 
 class _BoardPageState extends State<BoardPage> {
-  Map<String, List<Ticket>> columns = {};
+  List<Ticket> all = [];
   Map<int, String> userNames = {};
+  Map<int, String> customerNames = {};
   Map<int, Map<String, Object?>> lastLog = {};
+  Map<int, int> remaining = {};
+  String query = '';
+  String statusFilter = 'all';
+  int? userFilter;
+  bool loading = true;
 
   @override
   void initState() {
@@ -36,37 +56,403 @@ class _BoardPageState extends State<BoardPage> {
 
   Future<void> _load() async {
     final tickets = await TicketRepo.all();
-    final dbUsers = await UserRepo.list();
     final names = <int, String>{};
-    for (final u in dbUsers) {
+    for (final u in await UserRepo.list()) {
       final dn = (u['display_name'] ?? '') as String;
       names[u['id'] as int] =
           dn.isEmpty ? (u['username'] ?? '') as String : dn;
     }
-    // آخرین تغییر وضعیت هر سفارش — برای قاعده برگشت و نمایش زمان
+    final cNames = await CustomerRepo.nameMap();
     final last = <int, Map<String, Object?>>{};
+    final rem = <int, int>{};
     for (final t in tickets) {
       final log = await TicketRepo.statusLog(t.id!);
       if (log.isNotEmpty) last[t.id!] = log.last;
+      try {
+        rem[t.id!] = await DeliveryService.remainingOf(t);
+      } catch (_) {
+        rem[t.id!] = 0;
+      }
     }
     if (!mounted) return;
     setState(() {
+      all = tickets;
       userNames = names;
+      customerNames = cNames;
       lastLog = last;
-      columns = {for (final s in TicketStatus.order) s: <Ticket>[]};
-      for (final t in tickets) {
-        columns.putIfAbsent(t.status, () => []).add(t);
-      }
+      remaining = rem;
+      loading = false;
     });
   }
 
-  /// آیا کاربر جاری اجازه گذار رو به جلو از این مرحله را دارد؟
   bool _canTransition(String from, String to) {
     final me = AppSession.I.currentUser;
     if (me == null) return false;
     return me.can(PermTransitions.keyFor(from, to));
   }
 
+  List<Ticket> get _filtered {
+    var out = all;
+    if (statusFilter != 'all') {
+      out = out.where((t) => t.status == statusFilter).toList();
+    }
+    if (userFilter != null) {
+      out = out.where((t) => t.assignedTo == userFilter).toList();
+    }
+    if (query.trim().isNotEmpty) {
+      final q = toEnglishDigits(query.trim()).toLowerCase();
+      out = out.where((t) {
+        final hay =
+            '${t.code} ${customerNames[t.customerId] ?? ''}'.toLowerCase();
+        return hay.contains(q);
+      }).toList();
+    }
+    // بازها اول، جدیدترین اول
+    out.sort((a, b) {
+      final aDone = a.status == TicketStatus.delivered ? 1 : 0;
+      final bDone = b.status == TicketStatus.delivered ? 1 : 0;
+      if (aDone != bDone) return aDone - bDone;
+      return b.id!.compareTo(a.id!);
+    });
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // سربرگ — روی صفحه باریک، فقط عنوان + به‌روزرسانی (بدون سرریز)
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                Text('کارتابل تعمیرات',
+                    style: Theme.of(context).textTheme.titleLarge),
+                TextButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('به‌روزرسانی'),
+                ),
+                AppText(
+                  'کاربر جاری: ${AppSession.I.currentUser?.bestName ?? '-'}',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // نوار جستجو و فیلتر — همه در یک ردیف با اسکرول افقی روی موبایل
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 220,
+                    child: TextField(
+                      onChanged: (v) => setState(() => query = v),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        prefixIcon: Icon(Icons.search, size: 18),
+                        labelText: 'جستجو (شماره سفارش)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _statusFilterDropdown(),
+                  const SizedBox(width: 10),
+                  _userFilterDropdown(),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filtered.isEmpty
+                      ? const Center(
+                          child: Text('سفارشی با این فیلترها نیست'),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          itemCount: _filtered.length,
+                          itemBuilder: (_, i) =>
+                              _row(context, _filtered[i]),
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusFilterDropdown() {
+    return SizedBox(
+      width: 150,
+      child: DropdownButtonFormField<String>(
+        initialValue: statusFilter,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          isDense: true,
+          labelText: 'وضعیت',
+          border: OutlineInputBorder(),
+          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        ),
+        items: [
+          const DropdownMenuItem(value: 'all', child: Text('همه وضعیت‌ها')),
+          for (final s in TicketStatus.order)
+            DropdownMenuItem(value: s, child: Text(statusLabel(s))),
+        ],
+        onChanged: (v) => setState(() => statusFilter = v ?? 'all'),
+        isDense: true,
+      ),
+    );
+  }
+
+  Widget _userFilterDropdown() {
+    return SizedBox(
+      width: 190,
+      child: DropdownButtonFormField<int?>(
+        initialValue: userFilter,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          isDense: true,
+          labelText: 'مسئول کار',
+          border: OutlineInputBorder(),
+          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        ),
+        items: [
+          const DropdownMenuItem(value: null, child: Text('همه کاربران')),
+          for (final e in userNames.entries)
+            DropdownMenuItem(value: e.key, child: Text(e.value)),
+        ],
+        onChanged: (v) => setState(() => userFilter = v),
+        isDense: true,
+      ),
+    );
+  }
+
+  // ── ردیف لیستی رنگی ──
+  Widget _row(BuildContext context, Ticket t) {
+    final color = StatusStyle.of(t.status);
+    final log = lastLog[t.id];
+    final logTime = log != null && (log['created_at'] ?? '') != ''
+        ? shamsiDateTime(
+            DateTime.tryParse(log['created_at'] as String) ?? DateTime.now())
+        : '';
+    final assignee = t.assignedTo != null
+        ? (userNames[t.assignedTo] ?? 'کاربر ${toPersianDigits('${t.assignedTo}')}')
+        : 'واگذار نشده';
+    final rem = remaining[t.id] ?? 0;
+    final overdue = t.status != TicketStatus.delivered &&
+        t.dueDate.isBefore(DateTime.now());
+    final customer = customerNames[t.customerId] ?? '...';
+    return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          clipBehavior: Clip.antiAlias,
+          child: Row(
+            children: [
+              // نوار رنگی وضعیت
+              Container(width: 6, color: color),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(toPersianDigits(t.code),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                          const SizedBox(width: 8),
+                          // چیپ رنگی وضعیت — بند ۱۱
+                          Chip(
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: color.withValues(alpha: 0.14),
+                            label: Text(statusLabel(t.status),
+                                style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: color,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                          const Spacer(),
+                          if (overdue)
+                            Chip(
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor: Colors.red.withValues(alpha: 0.1),
+                              label: const Text('موعد گذشته',
+                                  style: TextStyle(
+                                      fontSize: 10, color: Colors.red)),
+                            ),
+                          Text(shamsiDate(t.dueDate),
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: overdue
+                                      ? Colors.red
+                                      : Colors.blueGrey)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 2,
+                        children: [
+                          Text('مشتری: $customer',
+                              style: const TextStyle(fontSize: 12.5)),
+                          Text('مسئول: $assignee',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.deepOrange)),
+                          if (rem > 0)
+                            Text('باقیمانده: ${moneyToman(rem)}',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.red)),
+                        ],
+                      ),
+                      if (logTime.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text('آخرین تغییر: $logTime',
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: Theme.of(context).colorScheme.outline)),
+                        ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (t.status == TicketStatus.ready)
+                            _deliverButton(t)
+                          else ...[
+                            Tooltip(
+                              message: 'مرحله قبل — فقط تغییردهندهٔ آخر',
+                              child: OutlinedButton.icon(
+                                icon: const Icon(Icons.undo, size: 15),
+                                label: const Text('مرحله قبل', style: TextStyle(fontSize: 11.5)),
+                                onPressed: () => _advance(t, false),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.redo, size: 15),
+                              label: Text('مرحله بعد',
+                                  style: const TextStyle(fontSize: 11.5)),
+                              onPressed: () => _advance(t, true),
+                            ),
+                          ],
+                          IconButton(
+                            tooltip: 'تاریخچه وضعیت‌ها',
+                            icon: const Icon(Icons.history, size: 18),
+                            onPressed: () => _historyDialog(t),
+                          ),
+                          IconButton(
+                            tooltip: 'جزئیات سفارش',
+                            icon: const Icon(Icons.open_in_new, size: 18),
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      TicketDetailPage(ticketId: t.id!),
+                                ),
+                              );
+                              _load();
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+  }
+
+  Widget _deliverButton(Ticket t) {
+    return FilledButton.icon(
+      icon: const Icon(Icons.local_shipping, size: 16),
+      label: const Text('تحویل با تاییدیه', style: TextStyle(fontSize: 11.5)),
+      onPressed: () => _deliverFlow(t),
+    );
+  }
+
+  // ── جریان تحویل با تاییدیه و تسویه (بند ۱۱) ──
+  Future<void> _deliverFlow(Ticket t) async {
+    final rem = await DeliveryService.remainingOf(t);
+    if (!mounted) return;
+    final choice = await showDialog<DeliveryDecision>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('تاییدیه تحویل ${toPersianDigits(t.code)}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                rem > 0
+                    ? 'باقیمانده تسویه این سفارش: ${moneyToman(rem)}'
+                    : 'حساب این سفارش کامل تسویه شده است.',
+                style: const TextStyle(fontSize: 13.5, height: 1.7),
+              ),
+              if (rem > 0) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'با تحویل، پیش‌فاکتور این سفارش به فاکتور قطعی تبدیل می‌شود.',
+                  style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('انصراف'),
+            ),
+            if (rem > 0) ...[
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, DeliveryDecision.deliverWithDebt),
+                child: const Text('تحویل با بدهی (تایید می‌کنم)',
+                    style: TextStyle(color: Colors.red)),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, DeliveryDecision.settleAndDeliver),
+                child: const Text('تسویه کامل و تحویل'),
+              ),
+            ] else
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, DeliveryDecision.settleAndDeliver),
+                child: const Text('تایید و تحویل'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+    final result =
+        await DeliveryService.deliver(t, decision: choice);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(result.message),
+      backgroundColor: result.ok ? null : Colors.red,
+    ));
+    _load();
+  }
+
+  // ── تغییر وضعیت رو به جلو / برگشت (فاز ۲ + بند ۱۱) ──
   Future<void> _advance(Ticket t, bool forward) async {
     final idx = TicketStatus.order.indexOf(t.status);
     final next = idx + (forward ? 1 : -1);
@@ -100,24 +486,15 @@ class _BoardPageState extends State<BoardPage> {
         ));
         return;
       }
-      final reason = await _reasonDialog('برگشت به مرحله «${statusLabel(to)}»',
-          required: true);
+      final reason = await _reasonDialog('برگشت به مرحله «${statusLabel(to)}»');
       if (reason == null || reason.trim().isEmpty) return;
       await TicketRepo.changeStatus(t.id!, to,
           userId: me?.id ?? 0, reason: reason.trim());
     }
-
-    // فاز ۲: گارانتی خودکار هنگام تحویل
-    if (to == 'delivered') {
-      try {
-        final months = await WarrantyRepo.defaultMonths();
-        await WarrantyRepo.upsertForTicket(t.id!, months);
-      } catch (_) {}
-    }
     await _load();
   }
 
-  /// گفت‌وگوی تغییر وضعیت رو به جلو — دلیل (اختیاری) + واگذاری به کاربر
+  /// گفت‌وگوی تغییر وضعیت رو به جلو — دلیل + واگذاری
   Future<_StatusResult?> _statusDialog(Ticket t, String to) async {
     final me = AppSession.I.currentUser;
     final canDelegate = me?.can('action.delegation.assign') ?? false;
@@ -200,7 +577,7 @@ class _BoardPageState extends State<BoardPage> {
   }
 
   /// گفت‌وگوی ثبت دلیل — برای برگشت وضعیت (الزامی، بند ۸)
-  Future<String?> _reasonDialog(String title, {bool required = false}) async {
+  Future<String?> _reasonDialog(String title) async {
     final ctrl = TextEditingController();
     return showDialog<String>(
       context: context,
@@ -223,7 +600,7 @@ class _BoardPageState extends State<BoardPage> {
                 child: const Text('انصراف')),
             FilledButton(
               onPressed: () {
-                if (required && ctrl.text.trim().isEmpty) return;
+                if (ctrl.text.trim().isEmpty) return;
                 Navigator.pop(ctx, ctrl.text.trim());
               },
               child: const Text('ثبت'),
@@ -234,166 +611,60 @@ class _BoardPageState extends State<BoardPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text('کارتابل تعمیرات',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(width: 12),
-                TextButton.icon(
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('به‌روزرسانی'),
-                ),
-                const Spacer(),
-                AppText(
-                  'کاربر جاری: ${AppSession.I.currentUser?.bestName ?? '-'}',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.outline),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  for (final status in TicketStatus.order)
-                    _column(context, status),
-                ],
-              ),
-            ),
+  /// تاریخچه کامل تغییر وضعیت‌ها با کاربر و دلیل (بند ۱۱)
+  Future<void> _historyDialog(Ticket t) async {
+    final log = await TicketRepo.statusLog(t.id!);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('تاریخچه ${toPersianDigits(t.code)}'),
+          content: SizedBox(
+            width: 420,
+            child: log.isEmpty
+                ? const Text('تاریخچه‌ای ثبت نشده است')
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: log.length,
+                    itemBuilder: (_, i) {
+                      final e = log[i];
+                      final uid = e['user_id'] as int?;
+                      final reason = ((e['reason'] ?? '') as String).trim();
+                      final note = ((e['note'] ?? '') as String).trim();
+                      final from = (e['from_status'] ?? '') as String;
+                      final to =
+                          (e['to_status'] ?? (e['status'] ?? '')) as String;
+                      final hasFrom = from.isNotEmpty && from != to;
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(Icons.flag,
+                            size: 18,
+                            color: StatusStyle.of(to)),
+                        title: Text(hasFrom
+                            ? '${statusLabel(from)} ← ${statusLabel(to)}'
+                            : statusLabel(to),
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(
+                          [
+                            if (uid != null && uid != 0)
+                              'کاربر: ${userNames[uid] ?? uid}',
+                            if (reason.isNotEmpty) 'دلیل: $reason',
+                            if (note.isNotEmpty) note,
+                            (e['created_at'] ?? '') as String,
+                          ].join(' — '),
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('بستن')),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _column(BuildContext context, String status) {
-    final cards = columns[status] ?? [];
-    final countFa = toPersianDigits('${cards.length}');
-    return Container(
-      width: 265,
-      margin: const EdgeInsets.only(left: 10),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text('${statusLabel(status)} ($countFa)',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: cards.isEmpty
-                ? const Center(child: Text('—', style: TextStyle(color: Colors.grey)))
-                : ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    children: cards.map((t) => _card(context, t)).toList(),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _card(BuildContext context, Ticket t) {
-    final log = lastLog[t.id];
-    final logTime = log != null && (log['created_at'] ?? '') != ''
-        ? shamsiDateTime(DateTime.tryParse(log['created_at'] as String) ?? DateTime.now())
-        : '';
-    final assignee = t.assignedTo != null
-        ? (userNames[t.assignedTo] ?? 'کاربر ${toPersianDigits('${t.assignedTo}')}')
-        : null;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () async {
-          await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => TicketDetailPage(ticketId: t.id!),
-          ));
-          _load();
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(child: Text(t.code, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5))),
-                  Text(shamsiDate(t.dueDate), style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              FutureBuilder<Customer?>(
-                future: CustomerRepo.byId(t.customerId),
-                builder: (_, snap) => Text(
-                  snap.hasData ? snap.data!.name : '...',
-                  style: const TextStyle(fontSize: 12.5),
-                ),
-              ),
-              if (assignee != null) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.handyman, size: 13, color: Colors.deepOrange),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text('مسئول: $assignee',
-                          style: const TextStyle(
-                              fontSize: 11.5, color: Colors.deepOrange),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
-                ),
-              ],
-              if (logTime.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text('آخرین تغییر: $logTime',
-                    style: TextStyle(
-                        fontSize: 10.5,
-                        color: Theme.of(context).colorScheme.outline)),
-              ],
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Tooltip(
-                    message: 'مرحله قبل — فقط تغییردهندهٔ آخرین مرحله',
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_forward, size: 18),
-                      onPressed: () => _advance(t, false),
-                    ),
-                  ),
-                  Text(statusLabel(t.status),
-                      style: TextStyle(fontSize: 11.5, color: Colors.deepOrange.shade700)),
-                  IconButton(
-                    tooltip: 'مرحله بعد',
-                    icon: const Icon(Icons.arrow_back, size: 18),
-                    onPressed: () => _advance(t, true),
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );

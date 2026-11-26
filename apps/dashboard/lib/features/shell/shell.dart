@@ -272,7 +272,9 @@ class _MainShellState extends State<MainShell> {
                 )
               : null,
         ),
-        drawer: isNarrow ? _mobileDrawer(cfg) : null,
+        drawer: isNarrow
+            ? _mobileDrawer(cfg, MediaQuery.of(context).size.width)
+            : null,
         body: Row(
           children: [
             if (!isNarrow) _floatingRail(cfg),
@@ -491,9 +493,15 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Widget _mobileDrawer(ThemeConfig cfg) {
+  /// سایدبار اندروید — بند ۵: همیشه مخفی؛ فقط با کلید سایدبار بالا-راست
+  /// باز می‌شود و با همان کلید/دکمه بستن جمع می‌شود؛ هرگز کل صفحه را
+  /// نمی‌گیرد (عرض محدود ۷۲٪ تا سقف ۳۰۰ پیکسل).
+  Widget _mobileDrawer(ThemeConfig cfg, double screenWidth) {
     final p = cfg.palette;
+    final drawerWidth =
+        (screenWidth * 0.72).clamp(240.0, 300.0).toDouble();
     return Drawer(
+      width: drawerWidth,
       backgroundColor: p.surface,
       child: ListView(
         padding: EdgeInsets.zero,
@@ -504,8 +512,18 @@ class _MainShellState extends State<MainShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.build_circle, color: p.primary, size: 34),
-                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.build_circle, color: p.primary, size: 34),
+                    const Spacer(),
+                    // بند ۵ — دکمه بستن همان کلید سایدبار
+                    IconButton(
+                      tooltip: 'بستن سایدبار',
+                      icon: Icon(Icons.close, color: p.textSecondary),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
                 AppText(AppInfo.appName,
                     style: TextStyle(
                         color: p.textPrimary,
