@@ -1,13 +1,36 @@
-/// فاکتورها — جدول هوشمند سورت‌پذیر با جمع (قواعد ۵، ۶، ۱۱)
+/// فاکتورها — فاز ۵ (بند ۱۳)
+/// سربرگ‌های مجزا: پیش‌فاکتورها | فاکتورها | ابطال‌شده‌ها
+/// هیچ فاکتوری حذف نمی‌شود؛ فقط ابطال می‌شود و به بخش ابطالی می‌رود.
+/// حذف کامل فقط توسط مدیر اصلی برنامه (بند ۱۳) + QR و باز کردن با شماره (بند ۶).
 library;
 
 import 'package:flutter/material.dart';
 
+import '../../core/db/db.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
+import '../../core/services/app_session.dart';
 import '../../core/utils.dart';
+import '../../shared/widgets/app_text.dart';
 import '../../shared/widgets/data_table_pro.dart';
+import '../../shared/widgets/qr_box.dart';
 import '../tickets/ticket_detail.dart';
+
+class _InvoiceRow {
+  final Map<String, Object?> inv;
+  final Ticket ticket;
+  final String customer;
+  _InvoiceRow(this.inv, this.ticket, this.customer);
+  int get id => (inv['id'] ?? 0) as int;
+  String get number => (inv['number'] ?? '') as String;
+  String get kind => (inv['kind'] ?? '') as String;
+  String get status => (inv['status'] ?? 'active') as String;
+  int get total => (inv['total'] ?? 0) as int;
+  int get discount => (inv['discount'] ?? 0) as int;
+  int get paid => (inv['paid'] ?? 0) as int;
+  int get remaining => total - discount - paid;
+  bool get cancelled => status == 'cancelled';
+}
 
 class InvoicesPage extends StatefulWidget {
   const InvoicesPage({super.key});
@@ -16,19 +39,9 @@ class InvoicesPage extends StatefulWidget {
   State<InvoicesPage> createState() => _InvoicesPageState();
 }
 
-class _InvoiceRow {
-  final Ticket ticket;
-  final String customerName;
-  final int total;
-  final int paid;
-  final int remaining;
-  _InvoiceRow(this.ticket, this.customerName, this.total, this.paid,
-      this.remaining);
-}
-
 class _InvoicesPageState extends State<InvoicesPage> {
-  List<_InvoiceRow> rows = [];
   bool loading = true;
+  List<_InvoiceRow> all = [];
 
   @override
   void initState() {
@@ -37,106 +50,283 @@ class _InvoicesPageState extends State<InvoicesPage> {
   }
 
   Future<void> _load() async {
-    final tickets = await TicketRepo.all();
-    final itemSums = await TicketItemRepo.sumsForAllTickets();
-    final paidSums = await PaymentRepo.paidSumForAll();
+    final db = await Db.instance();
+    final invRows = await db.query('invoices', orderBy: 'id DESC');
+    final cNames = await CustomerRepo.nameMap();
     final out = <_InvoiceRow>[];
-    for (final t in tickets) {
-      final c = await CustomerRepo.byId(t.customerId);
-      final itemsSum = itemSums[t.id] ?? 0;
-      final total = itemsSum > 0 ? itemsSum : t.estimateAmount;
-      final paid = paidSums[t.id] ?? 0;
-      out.add(_InvoiceRow(t, c?.name ?? '-', total, paid, total - paid));
+    for (final inv in invRows) {
+      final t = await TicketRepo.byId((inv['ticket_id'] ?? 0) as int);
+      if (t == null) continue;
+      out.add(_InvoiceRow(inv, t, cNames[t.customerId] ?? '-'));
     }
     if (!mounted) return;
     setState(() {
-      rows = out;
+      all = out;
       loading = false;
     });
   }
 
+  Future<void> _cancel(_InvoiceRow r) async {
+    final me = AppSession.I.currentUser;
+    if (!me!.can('action.invoice.edit')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('دسترسی ابطال فاکتور برای شما مجاز نیست'),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    final reason = await _reasonDialog('ابطال سند ${toPersianDigits(r.number)}');
+    if (reason == null || reason.trim().isEmpty) return;
+    await InvoiceRepo.cancel(r.id, reason.trim(), userId: me.id);
+    await InvoiceRepo.refreshForTicket(r.ticket.id!);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('سند ابطال شد و به بخش ابطال‌شده‌ها منتقل شد'),
+    ));
+    _load();
+  }
+
+  Future<void> _restore(_InvoiceRow r) async {
+    await InvoiceRepo.restore(r.id, userId: AppSession.I.currentUser?.id ?? 0);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('سند از ابطال خارج شد')));
+    _load();
+  }
+
+  /// حذف کامل — فقط مدیر اصلی (بند ۱۳) با هشدار دو مرحله‌ای
+  Future<void> _deleteFully(_InvoiceRow r) async {
+    final me = AppSession.I.currentUser;
+    if (!me!.isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('حذف کامل فقط توسط مدیر اصلی مجاز است'),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    final ok1 = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('هشدار اول — حذف کامل'),
+        content: Text(
+            'سند ${toPersianDigits(r.number)} و همه اثرهای آن از سراسر برنامه حذف می‌شود.\n'
+            'این عمل غیرقابل بازگشت است. ادامه؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('انصراف')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('ادامه')),
+        ],
+      ),
+    );
+    if (ok1 != true) return;
+    final ok2 = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('هشدار دوم — تایید نهایی'),
+        content: const Text(
+            'آیا مطمئنید؟ حذف کامل یعنی هیچ ردپایی از این سند باقی نمی‌ماند.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('انصراف')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حذف کامل')),
+        ],
+      ),
+    );
+    if (ok2 != true) return;
+    final err = await InvoiceRepo.deleteFully(r.id, actor: me);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err ?? 'سند به‌طور کامل حذف شد'),
+      backgroundColor: err != null ? Colors.red : null,
+    ));
+    _load();
+  }
+
+  Future<String?> _reasonDialog(String title) async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'دلیل ابطال (الزامی)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('انصراف')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('ابطال'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final pre = all.where((r) => r.kind == InvoiceRepo.kindPre && !r.cancelled).toList();
+    final fin = all.where((r) => r.kind == InvoiceRepo.kindFinal && !r.cancelled).toList();
+    final cancelled = all.where((r) => r.cancelled).toList();
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: DefaultTabController(
+        length: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('فاکتورها',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(width: 12),
+                  TextButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('به‌روزرسانی'),
+                  ),
+                ],
+              ),
+              AppText(
+                'هیچ فاکتوری از برنامه حذف نمی‌شود — فقط ابطال می‌شود و به بخش ابطالی می‌رود (بند ۱۳). حذف کامل فقط توسط مدیر اصلی.',
+                style: TextStyle(
+                    fontSize: 11.5,
+                    color: Theme.of(context).colorScheme.outline),
+              ),
+              const SizedBox(height: 6),
+              const TabBar(
+                tabs: [
+                  Tab(text: 'پیش‌فاکتورها'),
+                  Tab(text: 'فاکتورها'),
+                  Tab(text: 'ابطال‌شده‌ها'),
+                ],
+              ),
+              Expanded(
+                child: loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : TabBarView(children: [
+                        _table(pre, 'invoices_pre'),
+                        _table(fin, 'invoices_final'),
+                        _table(cancelled, 'invoices_cancelled'),
+                      ]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _table(List<_InvoiceRow> list, String tableId) {
+    if (list.isEmpty) {
+      return const Center(child: Text('سندی در این بخش نیست'));
+    }
+    final isCancelledTab = tableId == 'invoices_cancelled';
+    return SingleChildScrollView(
+      child: DataTablePro<_InvoiceRow>(
+        rows: list,
+        tableId: tableId,
+        searchIndex: (r) => '${r.number} ${r.ticket.code} ${r.customer}',
+        onRowTap: (r) async {
+          await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TicketDetailPage(ticketId: r.ticket.id!),
+          ));
+          _load();
+        },
+        columns: [
+          ProColumn<_InvoiceRow>(
+            label: 'شماره سند',
+            display: (r) => toPersianDigits(r.number),
+            width: 180,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'کد سفارش',
+            display: (r) => r.ticket.code,
+            width: 150,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'مشتری',
+            display: (r) => r.customer,
+            width: 150,
+            filterable: true,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'جمع',
+            display: (r) => money(r.total),
+            numeric: (r) => r.total,
+            width: 120,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'تخفیف',
+            display: (r) => money(r.discount),
+            numeric: (r) => r.discount,
+            width: 110,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'پرداخت‌شده',
+            display: (r) => money(r.paid),
+            numeric: (r) => r.paid,
+            width: 120,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'مانده',
+            display: (r) => money(r.remaining),
+            numeric: (r) => r.remaining,
+            width: 120,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'QR',
+            display: (r) => '',
+            width: 80,
+          ),
+          ProColumn<_InvoiceRow>(
+            label: 'عملیات',
+            display: (r) =>
+                isCancelledTab ? ((r.inv['cancel_reason'] ?? '') as String) : '',
+            width: 190,
+          ),
+        ],
+        rowAction: (r) => Wrap(
+          spacing: 4,
           children: [
-            Row(
-              children: [
-                Text('فاکتورها و وضعیت پرداخت',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(width: 10),
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() => loading = true);
-                    _load();
-                  },
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('به‌روزرسانی'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : rows.isEmpty
-                      ? const Center(child: Text('سفارشی ثبت نشده است'))
-                      : SingleChildScrollView(
-                          child: DataTablePro<_InvoiceRow>(
-                            rows: rows,
-                            tableId: 'invoices',
-                            searchIndex: (r) =>
-                                '${r.ticket.code} ${r.customerName}',
-                            onRowTap: (r) {
-                              Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) =>
-                                    TicketDetailPage(ticketId: r.ticket.id!),
-                              ));
-                            },
-                            columns: [
-                              ProColumn<_InvoiceRow>(
-                                label: 'شماره سفارش',
-                                display: (r) => r.ticket.code,
-                                width: 150,
-                              ),
-                              ProColumn<_InvoiceRow>(
-                                label: 'مشتری',
-                                display: (r) => r.customerName,
-                                width: 170,
-                                filterable: true,
-                              ),
-                              ProColumn<_InvoiceRow>(
-                                label: 'وضعیت',
-                                display: (r) => statusLabel(r.ticket.status),
-                                width: 110,
-                                filterable: true,
-                              ),
-                              ProColumn<_InvoiceRow>(
-                                label: 'جمع فاکتور',
-                                display: (r) => money(r.total),
-                                width: 130,
-                                numeric: (r) => r.total,
-                              ),
-                              ProColumn<_InvoiceRow>(
-                                label: 'پرداخت‌شده',
-                                display: (r) => money(r.paid),
-                                width: 130,
-                                numeric: (r) => r.paid,
-                              ),
-                              ProColumn<_InvoiceRow>(
-                                label: 'باقیمانده',
-                                display: (r) => money(r.remaining),
-                                width: 130,
-                                numeric: (r) => r.remaining,
-                              ),
-                            ],
-                          ),
-                        ),
-            ),
+            QrBox(data: '${r.ticket.code} ${r.number}', size: 60),
+            if (!isCancelledTab)
+              IconButton(
+                tooltip: 'ابطال (انتقال به ابطال‌شده‌ها)',
+                icon: const Icon(Icons.block, color: Colors.orange),
+                onPressed: () => _cancel(r),
+              )
+            else ...[
+              IconButton(
+                tooltip: 'بازگردانی از ابطال',
+                icon: const Icon(Icons.restore, color: Colors.green),
+                onPressed: () => _restore(r),
+              ),
+              IconButton(
+                tooltip: 'حذف کامل (فقط مدیر اصلی)',
+                icon: const Icon(Icons.delete_forever, color: Colors.red),
+                onPressed: () => _deleteFully(r),
+              ),
+            ],
           ],
         ),
       ),

@@ -6,7 +6,6 @@
 /// شماره‌گذاری استاندارد فاکتور در فاز ۵ جایگزین شماره موقت می‌شود.
 library;
 
-import '../db/db.dart';
 import '../models.dart';
 import '../repos.dart';
 import '../warranty.dart';
@@ -44,34 +43,8 @@ class DeliveryService {
 
   /// ساخت/به‌روزرسانی رکورد فاکتور سفارش تحویل‌شده — پیش‌فاکتور → فاکتور
   static Future<int> ensureInvoice(Ticket t, int userId) async {
-    final db = await Db.instance();
-    final total = await totalOf(t);
-    final paid = await PaymentRepo.paidSum(t.id!);
-    final existing = await db.query('invoices',
-        where: 'ticket_id = ?', whereArgs: [t.id!], limit: 1);
-    final now = DateTime.now().toIso8601String();
-    if (existing.isNotEmpty) {
-      final id = existing.first['id'] as int;
-      await db.update('invoices', {
-        'total': total,
-        'paid': paid,
-        'remaining': total - paid,
-      }, where: 'id = ?', whereArgs: [id]);
-      return id;
-    }
-    // شماره موقت یکتا — فاز ۵ شماره‌گذاری سال+روز+۴رقمی استاندارد می‌گذارد
-    final number =
-        'INV-${DateTime.now().millisecondsSinceEpoch}-T${t.id}';
-    return db.insert('invoices', {
-      'ticket_id': t.id!,
-      'number': number,
-      'total': total,
-      'discount': 0,
-      'paid': paid,
-      'remaining': total - paid,
-      'issued_at': now,
-      'pdf_path': '',
-    });
+    // فاز ۵ — شماره‌گذاری استاندارد سال+روز+۴رقمی از طریق InvoiceRepo
+    return InvoiceRepo.createFromTicket(ticket: t, kind: InvoiceRepo.kindFinal);
   }
 
   /// انجام تحویل — تصمیم را ثبت‌کننده UI می‌گیرد (دیالوگ تاییدیه)

@@ -29,9 +29,11 @@ class PermPages {
   static const List<Map<String, String>> all = [
     {'key': 'page.home', 'label': 'خانه'},
     {'key': 'page.intake', 'label': 'پذیرش'},
+    {'key': 'page.orders', 'label': 'سفارشات'},
     {'key': 'page.board', 'label': 'کارتابل'},
     {'key': 'page.customers', 'label': 'مشتریان'},
     {'key': 'page.invoices', 'label': 'فاکتورها'},
+    {'key': 'page.cashbox', 'label': 'صندوق'},
     {'key': 'page.calendar', 'label': 'تقویم'},
     {'key': 'page.reminders', 'label': 'یادآوری‌ها'},
     {'key': 'page.assistant', 'label': 'دستیار'},

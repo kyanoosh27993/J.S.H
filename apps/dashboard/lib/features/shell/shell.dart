@@ -15,11 +15,13 @@ import '../../shared/widgets/hover_tile.dart';
 import '../assistant/assistant_page.dart';
 import '../board/board.dart';
 import '../calendar/calendar_page.dart';
+import '../cashbox/cashbox_page.dart';
 import '../customers/customers.dart';
 import '../dbmanager/db_manager_page.dart';
 import '../home/dashboard.dart';
 import '../invoices/invoices.dart';
 import '../intake/intake.dart';
+import '../orders/orders_page.dart';
 import '../reminders/reminders.dart';
 import '../settings/settings.dart';
 import '../settings/theme_settings.dart';
@@ -102,7 +104,10 @@ class _MainShellState extends State<MainShell> {
         sections: ['خلاصه امروز', 'نمودارها', 'پیش‌بینی درآمد']),
     _NavItem(Icons.add_box_rounded, 'پذیرش',
         permKey: 'page.intake',
-        sections: ['فرم رسید سپردن', 'چک‌لیست لوازم', 'امضای مشتری']),
+        sections: ['فرم رسید سپردن', 'چک‌لیست لوازم', 'پترن قفل']),
+    _NavItem(Icons.reorder_rounded, 'سفارشات',
+        permKey: 'page.orders',
+        sections: ['لیست سفارشات', 'صدور پیش‌فاکتور/فاکتور', 'QR سند']),
     _NavItem(Icons.view_kanban_rounded, 'کارتابل',
         permKey: 'page.board',
         sections: ['همه مراحل', 'آماده تحویل', 'انتظار قطعه']),
@@ -111,7 +116,10 @@ class _MainShellState extends State<MainShell> {
         sections: ['لیست', 'تاریخچه', 'برچسب‌ها']),
     _NavItem(Icons.receipt_long_rounded, 'فاکتورها',
         permKey: 'page.invoices',
-        sections: ['همه فاکتورها', 'تسویه‌شده', 'بدهکار']),
+        sections: ['پیش‌فاکتورها', 'فاکتورها', 'ابطال‌شده‌ها']),
+    _NavItem(Icons.account_balance_wallet_rounded, 'صندوق',
+        permKey: 'page.cashbox',
+        sections: ['تسویه‌نشده', 'تسویه‌شده', 'تخفیف']),
     _NavItem(Icons.calendar_month_rounded, 'تقویم',
         permKey: 'page.calendar',
         sections: ['ماه جاری', 'تعطیلات رسمی', 'خروجی Google Calendar']),
@@ -132,7 +140,7 @@ class _MainShellState extends State<MainShell> {
         sections: ['فهرست کاربران', 'دسترسی‌ها', 'عملکرد کاربران']),
     _NavItem(Icons.settings_rounded, 'تنظیمات',
         permKey: 'page.settings',
-        sections: ['فروشگاه', 'ایمیل', 'یادآوری', 'گارانتی']),
+        sections: ['فروشگاه', 'یادآوری', 'لوازم همراه', 'تصاویر', 'شماره‌گذاری سند']),
     _NavItem(Icons.palette_rounded, 'تم و ظاهر',
         permKey: 'page.theme',
         sections: ['سه تم پیش‌فرض', 'فونت متن و اعداد', 'شخصی‌سازی ریز']),
@@ -223,7 +231,7 @@ class _MainShellState extends State<MainShell> {
             IconButton(
               tooltip: 'شخصی‌سازی کامل ظاهر',
               icon: Icon(Icons.tune, size: 20, color: p.textSecondary),
-              onPressed: () => setState(() => index = 11),
+              onPressed: () => setState(() => index = 14),
             ),
             // فاز ۲ — کاربر جاری + خروج
             if (me != null)
@@ -567,28 +575,32 @@ class _MainShellState extends State<MainShell> {
       case 1:
         return const IntakePage();
       case 2:
-        return const BoardPage();
+        return const OrdersPage();
       case 3:
-        return const CustomersPage();
+        return const BoardPage();
       case 4:
-        return const InvoicesPage();
+        return const CustomersPage();
       case 5:
-        return const CalendarPage();
+        return const InvoicesPage();
       case 6:
-        return const RemindersPage();
+        return const CashboxPage();
       case 7:
-        return const AssistantPage();
+        return const CalendarPage();
       case 8:
-        return const WarrantyPage();
+        return const RemindersPage();
       case 9:
-        return const DbManagerPage();
+        return const AssistantPage();
       case 10:
-        return const UsersPage();
+        return const WarrantyPage();
       case 11:
-        return const SettingsPage();
+        return const DbManagerPage();
       case 12:
-        return const ThemeSettingsPage();
+        return const UsersPage();
       case 13:
+        return const SettingsPage();
+      case 14:
+        return const ThemeSettingsPage();
+      case 15:
         return SupportPage(session: widget.session);
       default:
         return const SizedBox();

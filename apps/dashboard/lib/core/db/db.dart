@@ -229,6 +229,14 @@ class Db {
         'to_status',
         'reason',
       ],
+      // فاز ۵ — فاکتور: نوع/وضعیت ابطال + دلیل (بند ۱۳)
+      'invoices': [
+        'kind',
+        'status',
+        'cancelled_at',
+        'cancel_reason',
+        'note',
+      ],
     };
     // ستون‌های عددی/NULL
     final intCols = <String, List<String>>{

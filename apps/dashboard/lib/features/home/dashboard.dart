@@ -213,12 +213,12 @@ class _DashboardPageState extends State<DashboardPage> {
               label: const Text('پذیرش دستگاه جدید'),
             ),
             OutlinedButton.icon(
-              onPressed: () => widget.onGo(5),
+              onPressed: () => widget.onGo(7),
               icon: const Icon(Icons.calendar_month),
               label: const Text('تقویم سفارشات'),
             ),
             OutlinedButton.icon(
-              onPressed: () => widget.onGo(7),
+              onPressed: () => widget.onGo(9),
               icon: const Icon(Icons.auto_awesome),
               label: const Text('دستیار هوشمند'),
             ),

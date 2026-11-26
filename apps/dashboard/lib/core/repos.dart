@@ -5,6 +5,7 @@ import 'db/db.dart';
 import 'models.dart';
 import 'services/auth_service.dart' show AuthUser, AuthService, kRoleCreator;
 import 'services/supervisor_service.dart' show AuditRepo;
+import 'package:shamsi_date/shamsi_date.dart' as j;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class SettingsRepo {
@@ -606,5 +607,199 @@ class LicenseRepo {
       'activated_at': s.activatedAt,
       'last_seen_date': s.lastSeenDate,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+}
+
+/// ریپازیتوری فاکتور — فاز ۵ (بندهای ۱۲ و ۱۳)
+/// شماره‌گذاری استاندارد: سال+روز ثبت (شمسی YYYYMMDD) + عدد افزاینده ۴ رقمی
+/// که شروع آن در تنظیمات تعیین می‌شود؛ ابطال به‌جای حذف؛ حذف کامل فقط مدیر اصلی.
+class InvoiceRepo {
+  static const String kindPre = 'pre';
+  static const String kindFinal = 'final';
+
+  static Future<Map<int, Map<String, Object?>>> allByTicketMap() async {
+    final db = await Db.instance();
+    final rows = await db.query('invoices', orderBy: 'id DESC');
+    return {for (final r in rows) (r['ticket_id'] as int): r};
+  }
+
+  /// شماره استاندارد — YYYYMMDD-#### (بند ۱۲)
+  static Future<String> nextNumber(String kind) async {
+    final db = await Db.instance();
+    final now = DateTime.now();
+    final jd = j.Jalali.fromDateTime(now);
+    final datePrefix =
+        '${jd.year}${jd.month.toString().padLeft(2, '0')}${jd.day.toString().padLeft(2, '0')}';
+    final settingKey = kind == kindPre ? 'pre_invoice_start' : 'invoice_start';
+    final start = int.tryParse(
+            await SettingsRepo.get(settingKey, '1')) ??
+        1;
+    final rows = await db.query('invoices',
+        columns: ['number'],
+        where: 'number LIKE ? AND kind = ?',
+        whereArgs: ['$datePrefix-%', kind]);
+    final maxSeq = rows.fold<int>(0, (mx, r) {
+      final n = (r['number'] ?? '') as String;
+      final seqPart = n.split('-').last;
+      return mx < (int.tryParse(seqPart) ?? 0) ? (int.tryParse(seqPart) ?? 0) : mx;
+    });
+    final seq = start > maxSeq ? start : maxSeq + 1;
+    return '$datePrefix-${seq.toString().padLeft(4, '0')}';
+  }
+
+  /// ساخت فاکتور از سفارش — پیش‌فاکتور یا قطعی
+  static Future<int> createFromTicket({
+    required Ticket ticket,
+    required String kind,
+    int discount = 0,
+    String note = '',
+  }) async {
+    final db = await Db.instance();
+    final items = await TicketItemRepo.byTicket(ticket.id!);
+    final sum = items.fold<int>(0, (s, i) => s + i.price * i.qty);
+    final total = sum > 0 ? sum : ticket.estimateAmount;
+    final paid = await PaymentRepo.paidSum(ticket.id!);
+    final existing = await db.query('invoices',
+        where: 'ticket_id = ? AND kind = ?',
+        whereArgs: [ticket.id!, kind],
+        limit: 1);
+    if (existing.isNotEmpty) {
+      // فاز ۵ — سند موجود به‌روز می‌شود (جمع/پرداخت/مانده) نه تکراری
+      final id = existing.first['id'] as int;
+      final disc = (existing.first['discount'] ?? 0) as int;
+      await db.update('invoices', {
+        'total': total,
+        'paid': paid,
+        'remaining': (total - disc) - paid,
+      }, where: 'id = ?', whereArgs: [id]);
+      return id;
+    }
+    final number = await nextNumber(kind);
+    final id = await db.insert('invoices', {
+      'ticket_id': ticket.id!,
+      'number': number,
+      'total': total,
+      'discount': discount,
+      'paid': paid,
+      'remaining': (total - discount) - paid,
+      'issued_at': DateTime.now().toIso8601String(),
+      'pdf_path': '',
+      'kind': kind,
+      'status': 'active',
+      'cancelled_at': '',
+      'cancel_reason': '',
+      'note': note,
+    });
+    await AuditRepo.log('invoice_create',
+        'ساخت ${kind == kindPre ? 'پیش‌فاکتور' : 'فاکتور'} $number برای سفارش #${ticket.id}');
+    return id;
+  }
+
+  /// ابطال — هیچ فاکتوری حذف نمی‌شود (بند ۱۳)
+  static Future<void> cancel(int id, String reason, {int userId = 0}) async {
+    final db = await Db.instance();
+    await db.update('invoices', {
+      'status': 'cancelled',
+      'cancelled_at': DateTime.now().toIso8601String(),
+      'cancel_reason': reason,
+    }, where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log('invoice_cancel',
+        'ابطال فاکتور #$id با دلیل: $reason — کاربر #$userId');
+  }
+
+  /// بازگردانی از ابطال — برای اشتباه ابطال
+  static Future<void> restore(int id, {int userId = 0}) async {
+    final db = await Db.instance();
+    await db.update('invoices', {
+      'status': 'active',
+      'cancelled_at': '',
+      'cancel_reason': '',
+    }, where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log('invoice_restore', 'بازگردانی فاکتور #$id — کاربر #$userId');
+  }
+
+  /// حذف کامل — فقط مدیر اصلی برنامه (بند ۱۳)
+  static Future<String?> deleteFully(int id, {AuthUser? actor}) async {
+    if (actor == null || !(actor.isAdmin)) {
+      return 'حذف کامل فاکتور فقط توسط مدیر اصلی مجاز است';
+    }
+    final db = await Db.instance();
+    await db.delete('invoices', where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log('invoice_delete', 'حذف کامل فاکتور #$id — توسط ${actor.username}');
+    return null;
+  }
+
+  /// افزودن قلم به فاکتور سفارش (صندوق — بند ۱۴) و به‌روزرسانی جمع
+  static Future<void> refreshForTicket(int ticketId) async {
+    final db = await Db.instance();
+    final rows = await db.query('invoices',
+        where: 'ticket_id = ?', whereArgs: [ticketId]);
+    final ticket = await TicketRepo.byId(ticketId);
+    if (ticket == null) return;
+    final items = await TicketItemRepo.byTicket(ticketId);
+    final sum = items.fold<int>(0, (s, i) => s + i.price * i.qty);
+    final total = sum > 0 ? sum : ticket.estimateAmount;
+    final paid = await PaymentRepo.paidSum(ticketId);
+    for (final r in rows) {
+      if ((r['status'] ?? '') == 'cancelled') continue;
+      final discount = (r['discount'] ?? 0) as int;
+      await db.update('invoices', {
+        'total': total,
+        'paid': paid,
+        'remaining': (total - discount) - paid,
+      }, where: 'id = ?', whereArgs: [r['id']]);
+    }
+  }
+
+  /// اعمال تخفیف نقدی یا درصدی (بند ۱۴)
+  static Future<void> applyDiscount(int invoiceId, {int amount = 0, double percent = 0}) async {
+    final db = await Db.instance();
+    final rows = await db.query('invoices', where: 'id = ?', whereArgs: [invoiceId], limit: 1);
+    if (rows.isEmpty) return;
+    final r = rows.first;
+    final total = (r['total'] ?? 0) as int;
+    final newDiscount = percent > 0
+        ? ((total * percent / 100).round())
+        : amount;
+    final paid = (r['paid'] ?? 0) as int;
+    await db.update('invoices', {
+      'discount': newDiscount,
+      'remaining': (total - newDiscount) - paid,
+    }, where: 'id = ?', whereArgs: [invoiceId]);
+    await AuditRepo.log('invoice_discount',
+        'تخفیف $newDiscount تومان روی فاکتور #$invoiceId');
+  }
+
+  /// تسویه مانده (صندوق — بند ۱۴) — با کاربر وصول‌کننده
+  static Future<void> settle(int invoiceId, int ticketId,
+      {int? amount, int? userId}) async {
+    final db = await Db.instance();
+    final rows = await db.query('invoices', where: 'id = ?', whereArgs: [invoiceId], limit: 1);
+    if (rows.isEmpty) return;
+    final r = rows.first;
+    final remaining = (r['remaining'] ?? 0) as int;
+    final pay = amount ?? (remaining > 0 ? remaining : 0);
+    if (pay <= 0) return;
+    await PaymentRepo.insert(Payment(
+      ticketId: ticketId,
+      amount: pay,
+      kind: 'final',
+      userId: userId,
+    ));
+    await refreshForTicket(ticketId);
+    await AuditRepo.log('settle', 'تسویه $pay تومان فاکتور #$invoiceId');
+  }
+
+  /// جستجو با شماره فاکتور یا کد سفارش — باز کردن سند (بند ۶ جدید)
+  static Future<Map<String, Object?>?> findByNumberOrCode(String q) async {
+    final db = await Db.instance();
+    final like = '%${q.trim()}%';
+    final rows = await db.rawQuery('''
+      SELECT i.* FROM invoices i
+      LEFT JOIN tickets t ON t.id = i.ticket_id
+      WHERE i.number LIKE ? OR t.code LIKE ?
+      ORDER BY i.id DESC LIMIT 1
+    ''', [like, like]);
+    return rows.isEmpty ? null : rows.first;
   }
 }

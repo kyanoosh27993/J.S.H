@@ -23,6 +23,8 @@ class _SettingsPageState extends State<SettingsPage> {
   final shopPhone = TextEditingController();
   final shopEmail = TextEditingController();
   final leadDaysCtrl = TextEditingController();
+  final preInvoiceStartCtrl = TextEditingController();
+  final invoiceStartCtrl = TextEditingController();
   int reminderHour = ReminderPrefs.defaultHour;
   bool saved = false;
 
@@ -41,7 +43,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in [shopName, shopAddress, shopPhone, shopEmail, leadDaysCtrl, newAccessory]) {
+    for (final c in [
+      shopName,
+      shopAddress,
+      shopPhone,
+      shopEmail,
+      leadDaysCtrl,
+      preInvoiceStartCtrl,
+      invoiceStartCtrl,
+      newAccessory
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -62,6 +73,8 @@ class _SettingsPageState extends State<SettingsPage> {
       shopEmail.text = s['email'] ?? '';
       leadDaysCtrl.text =
           s['reminder_lead_days'] ?? '${ReminderPrefs.defaultLeadDays}';
+      preInvoiceStartCtrl.text = s['pre_invoice_start'] ?? '1';
+      invoiceStartCtrl.text = s['invoice_start'] ?? '1';
       reminderHour =
           int.tryParse(s['reminder_hour'] ?? '') ?? ReminderPrefs.defaultHour;
       accessories = acc;
@@ -82,6 +95,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ReminderPrefs.defaultLeadDays),
       hour: reminderHour,
     );
+    // بند ۱۲ — شروع شماره‌گذاری سند
+    await SettingsRepo.set('pre_invoice_start',
+        toEnglishDigits(preInvoiceStartCtrl.text.trim()).replaceAll(',', ''));
+    await SettingsRepo.set('invoice_start',
+        toEnglishDigits(invoiceStartCtrl.text.trim()).replaceAll(',', ''));
     await ShopSettingsService.saveAccessories(accessories);
     setState(() => saved = true);
     await Future.delayed(const Duration(seconds: 2));
@@ -186,6 +204,39 @@ class _SettingsPageState extends State<SettingsPage> {
                   onPressed: _addAccessory,
                   icon: const Icon(Icons.add),
                   tooltip: 'افزودن',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // بند ۱۲ — شماره‌گذاری سند
+            const Text(
+                'شماره‌گذاری سند — شروع عدد افزاینده ۴ رقمی (سال+روز ثبت + شماره)',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: preInvoiceStartCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'شروع پیش‌فاکتور (مثلاً 100)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: invoiceStartCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'شروع فاکتور (مثلاً 100)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
                 ),
               ],
             ),
