@@ -75,10 +75,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # نسخه سازگار با Gradle 8.12 / AGP 8.9.1 پروژه — 3.50 حداقل Gradle 9.3.1 می‌خواهد
+          flutter-version: 3.35.0
           cache: true
       - run: flutter pub get
-      # Gradle 8.12 پروژه از حداقلِ جدیدترین Flutter (9.3.1) پایین‌تر است — با پرچم رسمی bypass
-      - run: flutter build apk --release --android-skip-build-dependency-validation
+      - run: flutter build apk --release
       - name: تغییر نام APK
         run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/jsh-android.apk"
       - name: انتشار در Release
