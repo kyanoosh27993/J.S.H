@@ -77,7 +77,7 @@ class _JshDashboardAppState extends State<JshDashboardApp> {
               child: child!,
             ),
           ),
-          home: _RootGate(session: widget.session),
+          home: _RootGate(session: widget.session, bootError: widget.bootError),
         );
       },
     );
@@ -88,7 +88,9 @@ class _JshDashboardAppState extends State<JshDashboardApp> {
 /// دروازه اصلی — هر بار اجرا از نو بررسی می‌شود (N-03 مطلق است)
 class _RootGate extends StatefulWidget {
   final AppSession session;
-  const _RootGate({required this.session});
+  /// خطای راه‌اندازی اولیه — نمایش صریح به‌جای صفحه سیاه
+  final Object? bootError;
+  const _RootGate({required this.session, this.bootError});
 
   @override
   State<_RootGate> createState() => _RootGateState();
