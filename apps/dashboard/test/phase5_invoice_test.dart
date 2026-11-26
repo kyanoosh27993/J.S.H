@@ -197,7 +197,6 @@ void main() {
     });
 
     test('افزودن قلم از صندوق — جمع فاکتور به‌روز می‌شود', () async {
-      final t = (await TicketRepo.byId(tid2))!;
       await TicketItemRepo.insert(TicketItem(
         ticketId: tid2,
         description: 'پد حرارتی',

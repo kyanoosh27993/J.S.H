@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart' as j;
 
+import '../../core/db/db.dart';
 import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
@@ -45,6 +46,7 @@ class CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<CalendarPage> {
   late j.Jalali view;
   Map<String, List<Ticket>> byDay = {};
+  Map<String, List<String>> cancelledByDay = {};
   bool includeDelivered = true;
   bool exporting = false;
 
@@ -63,8 +65,25 @@ class _CalendarPageState extends State<CalendarPage> {
       final jd = j.Jalali.fromDateTime(t.dueDate);
       map.putIfAbsent('${jd.year}-${jd.month}-${jd.day}', () => []).add(t);
     }
+    // بند ۱۶ — ابطال‌شده‌ها هم در تقویم نمایش داده شوند
+    final cancelled = <String, List<String>>{};
+    final db = await Db.instance();
+    final invs = await db.query('invoices',
+        where: 'status = ? AND cancelled_at != ?',
+        whereArgs: ['cancelled', '']);
+    for (final inv in invs) {
+      final dt = DateTime.tryParse((inv['cancelled_at'] ?? '') as String);
+      if (dt == null) continue;
+      final jd = j.Jalali.fromDateTime(dt);
+      cancelled
+          .putIfAbsent('${jd.year}-${jd.month}-${jd.day}', () => [])
+          .add('ابطال ${(inv['number'] ?? '') as String}');
+    }
     if (!mounted) return;
-    setState(() => byDay = map);
+    setState(() {
+      byDay = map;
+      cancelledByDay = cancelled;
+    });
   }
 
   Future<void> _export() async {
@@ -233,92 +252,182 @@ class _CalendarPageState extends State<CalendarPage> {
         date.month == today.month &&
         date.day == today.day;
     final tickets = byDay['${date.year}-${date.month}-${date.day}'] ?? [];
+    final cancelled = cancelledByDay['${date.year}-${date.month}-${date.day}'] ?? [];
 
-    return Container(
-      margin: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: holiday != null || friday
-            ? Colors.red.shade50
-            : thursday
-                ? Colors.orange.shade50
-                : Colors.grey.shade50,
-        border: isToday
-            ? Border.all(color: Colors.blue, width: 1.6)
-            : Border.all(color: Colors.grey.shade300, width: 0.5),
-        borderRadius: BorderRadius.circular(7),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            child: Row(
-              children: [
-                Text(toPersianDigits('$d'),
+    // بند ۱۶ — روزهای عادی سفید؛ تعطیلات رسمی/جمعه خاکستری خیلی کمرنگ
+    final isHoliday = holiday != null || friday;
+    return InkWell(
+      onTap: () => _dayDialog(date, tickets, cancelled),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: isHoliday
+              ? Colors.grey.shade200
+              : thursday
+                  ? Colors.grey.shade100
+                  : Colors.white,
+          border: isToday
+              ? Border.all(color: Colors.blue, width: 1.6)
+              : Border.all(color: Colors.grey.shade300, width: 0.5),
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              child: Row(
+                children: [
+                  Text(toPersianDigits('$d'),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                        color: isHoliday
+                            ? Colors.grey.shade600
+                            : Colors.black87,
+                      )),
+                  const Spacer(),
+                  if (holiday != null)
+                    Tooltip(
+                      message: holiday,
+                      child: Icon(Icons.celebration,
+                          size: 11, color: Colors.grey.shade500),
+                    ),
+                ],
+              ),
+            ),
+            if (holiday != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: Text(holiday,
                     style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.bold,
-                      color: holiday != null || friday ? Colors.red.shade700 : Colors.black87,
-                    )),
-                const Spacer(),
-                if (holiday != null)
-                  Tooltip(
-                    message: holiday,
-                    child: const Icon(Icons.celebration, size: 11, color: Colors.red),
+                        fontSize: 7.5, color: Colors.grey.shade500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+            Expanded(
+              child: ListView.builder(
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                itemCount: (tickets.length + cancelled.length)
+                    .clamp(0, 4),
+                itemBuilder: (_, i) {
+                  // بند ۱۶ — ابطالی‌ها هم در خونه تقویم
+                  if (i >= tickets.length) {
+                    final c = cancelled[i - tickets.length];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(c,
+                            style: const TextStyle(
+                                fontSize: 8.5, color: Colors.grey)),
+                      ),
+                    );
+                  }
+                  if (tickets.length + cancelled.length > 3 && i == 3) {
+                    return Text(
+                        '+${toPersianDigits('${tickets.length + cancelled.length - 3}')} مورد دیگر',
+                        style: const TextStyle(
+                            fontSize: 8.5, color: Colors.blueGrey));
+                  }
+                  final t = tickets[i];
+                  final color = statusColor(t.status);
+                  return InkWell(
+                    onTap: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => TicketDetailPage(ticketId: t.id!),
+                      ));
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                            color: color.withValues(alpha: 0.5), width: 0.6),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          '${t.code} — ${statusLabel(t.status)}',
+                          style: TextStyle(fontSize: 8.5, color: color),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// بند ۱۶ — کلیک روی روز → لیست کامل کارهای آن روز
+  void _dayDialog(j.Jalali date, List<Ticket> tickets,
+      List<String> cancelled) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text(
+              'کارهای روز ${toPersianDigits('${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}')}'),
+          content: SizedBox(
+            width: 380,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                if (tickets.isEmpty && cancelled.isEmpty)
+                  const Text('کاری برای این روز ثبت نشده است'),
+                for (final t in tickets)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(Icons.flag,
+                        size: 16, color: statusColor(t.status)),
+                    title: Text(
+                        '${t.code} — ${statusLabel(t.status)}',
+                        style: const TextStyle(fontSize: 12.5)),
+                    subtitle: Text(
+                        'موعد تحویل ${shamsiDate(t.dueDate)}',
+                        style: const TextStyle(fontSize: 10.5)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => TicketDetailPage(ticketId: t.id!),
+                      ));
+                    },
+                  ),
+                for (final c in cancelled)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(Icons.block,
+                        size: 16, color: Colors.grey.shade500),
+                    title: Text(c,
+                        style: const TextStyle(
+                            fontSize: 12.5, color: Colors.grey)),
                   ),
               ],
             ),
           ),
-          if (holiday != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              child: Text(holiday,
-                  style: TextStyle(fontSize: 7.5, color: Colors.red.shade400),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-            ),
-          Expanded(
-            child: ListView.builder(
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              itemCount: tickets.length.clamp(0, 4),
-              itemBuilder: (_, i) {
-                if (tickets.length > 3 && i == 3) {
-                  return Text(
-                    '+${toPersianDigits('${tickets.length - 3}')} سفارش دیگر',
-                    style: const TextStyle(fontSize: 8.5, color: Colors.blueGrey),
-                  );
-                }
-                final t = tickets[i];
-                final color = statusColor(t.status);
-                return InkWell(
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => TicketDetailPage(ticketId: t.id!),
-                    ));
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: color.withValues(alpha: 0.5), width: 0.6),
-                    ),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Text(
-                        '${t.code} — ${statusLabel(t.status)}',
-                        style: TextStyle(fontSize: 8.5, color: color),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('بستن')),
+          ],
+        ),
       ),
     );
   }
