@@ -71,6 +71,13 @@ bool isValidIranianMobile(String phone) {
       RegExp(r'^\+989\d{9}$').hasMatch(s);
 }
 
+/// بند ۱۰ — کد ملی ۱۰ رقم (فرد) یا شناسه ملی ۱۱ رقم (شرکت)
+bool isValidNationalId(String v) {
+  final s = toEnglishDigits(v.trim()).replaceAll(RegExp(r'[\s-]'), '');
+  if (s.isEmpty) return true; // اختیاری
+  return RegExp(r'^\d{10}$').hasMatch(s) || RegExp(r'^\d{11}$').hasMatch(s);
+}
+
 /// انتخاب پیش‌فرض: برچسب وضعیت
 String statusLabel(String key) {
   const map = {

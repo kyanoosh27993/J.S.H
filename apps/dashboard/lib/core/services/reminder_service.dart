@@ -127,7 +127,8 @@ class ReminderService {
         int.tryParse(await SettingsRepo.get('reminder_hour')) ??
             ReminderPrefs.defaultHour;
     return (
-      ReminderPrefs.allowedLeadDays.contains(lead)
+      // بند ۱ — عدد دلخواه ۱ تا ۳۰؛ خارج از بازه به پیش‌فرض می‌رسد
+      ReminderPrefs.minLeadDays <= lead && lead <= ReminderPrefs.maxLeadDays
           ? lead
           : ReminderPrefs.defaultLeadDays,
       hour.clamp(0, 23).toInt(),

@@ -12,7 +12,7 @@ class VendorInfo {
 class AppInfo {
   static const String appName = 'داشبورد تعمیرات و خدمات';
   static const String projectId = 'J.S.H';
-  static const String version = '0.7.0';
+  static const String version = '0.8.0';
   static const String dbFileName = 'jsh_dashboard.db';
   static const int maxInstalls = 3; // نیازمندی F-09
   static const int reportDeadlineDays = 30; // نیازمندی N-03
@@ -45,14 +45,18 @@ class TicketStatus {
   ];
 }
 
-/// گزینه‌های چک‌لیست لوازم همراه دستگاه (فرم کاغذی فعلی فروشگاه — F-12)
+/// گزینه‌های چک‌لیست لوازم همراه — پیش‌فرض؛ لیست واقعی از تنظیمات خوانده می‌شود (بند ۱۰)
 class Accessory {
   static const List<String> all = ['درب پشت', 'باتری', 'مموری', 'سیم کارت'];
 }
 
 class ReminderPrefs {
-  /// فاصله یادآوری از موعد تحویل — انتخاب کاربر: ۲، ۳ یا ۷ روز (N-01)
-  static const List<int> allowedLeadDays = [2, 3, 7];
+  /// بند ۱ — عدد روز یادآوری دلخواه کاربر (۱ تا ۳۰) — نه فقط ۲/۳/۷
   static const int defaultLeadDays = 3;
   static const int defaultHour = 9;
+  static const int minLeadDays = 1;
+  static const int maxLeadDays = 30;
+
+  static int clampLeadDays(int d) =>
+      d < minLeadDays ? minLeadDays : (d > maxLeadDays ? maxLeadDays : d);
 }

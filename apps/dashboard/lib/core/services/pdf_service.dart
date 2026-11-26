@@ -18,6 +18,12 @@ class PdfService {
   static pw.Font? _regular;
   static pw.Font? _bold;
 
+  /// فونت‌های عمومی برای سرویس‌های PDF دیگر (فرم A5)
+  static pw.Font get regularFont => _regular!;
+  static pw.Font get boldFont => _bold!;
+  static bool get fontsReady => _regular != null;
+  static Future<void> ensureFonts() => _ensureFonts();
+
   static Future<void> _ensureFonts() async {
     if (_regular != null) return;
     final regData =

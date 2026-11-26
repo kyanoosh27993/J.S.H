@@ -34,6 +34,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
   final shopAddress = TextEditingController();
   final shopPhone = TextEditingController();
   final shopEmail = TextEditingController();
+  final leadCtrl = TextEditingController(text: '${ReminderPrefs.defaultLeadDays}');
   int leadDays = ReminderPrefs.defaultLeadDays;
   int reminderHour = ReminderPrefs.defaultHour;
 
@@ -105,7 +106,9 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
           'phone': shopPhone.text.trim(),
           'email': shopEmail.text.trim(),
         },
-        leadDays: leadDays,
+        leadDays: ReminderPrefs.clampLeadDays(
+            int.tryParse(toEnglishDigits(leadCtrl.text)) ??
+                ReminderPrefs.defaultLeadDays),
         hour: reminderHour,
       );
 
@@ -279,17 +282,15 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
       children: [
         const Text('تنظیمات یادآوری و امضای فعال‌سازی', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-        const Text('مدت یادآوری قبل از موعد تحویل:', style: TextStyle(fontSize: 13.5)),
-        Wrap(
-          spacing: 10,
-          children: [
-            for (final d in ReminderPrefs.allowedLeadDays)
-              ChoiceChip(
-                label: Text('${toPersianDigits('$d')} روز قبل'),
-                selected: leadDays == d,
-                onSelected: (_) => setState(() => leadDays = d),
-              ),
-          ],
+        const Text('مدت یادآوری قبل از موعد تحویل (۱ تا ۳۰ روز):', style: TextStyle(fontSize: 13.5)),
+        TextField(
+          controller: leadCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            suffixText: 'روز قبل از موعد',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
         ),
         const SizedBox(height: 14),
         const Text('ساعت یادآوری روزانه:', style: TextStyle(fontSize: 13.5)),

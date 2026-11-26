@@ -182,38 +182,33 @@ void main() {
       });
       await tester.pump(const Duration(milliseconds: 200));
 
-      // ۲) انتخاب مشتری از CRM — دراپ‌داون واقعی (با تلاش مجدد تا باز شدن منو)
-      Finder itemFinder = find.text('');
-      var opened = false;
-      for (var k = 0; k < 6 && !opened; k++) {
-        await tapHere(tester, find.byType(DropdownButtonFormField<Customer>));
-        await tester.pump(const Duration(milliseconds: 350));
-        final exact =
-            find.text('${o['name']} — ${toPersianDigits(o['phone']!)}');
-        if (exact.evaluate().isNotEmpty) {
-          itemFinder = exact.last;
-          opened = true;
-        } else {
-          await tester.runAsync(() async {
-            await Future.delayed(const Duration(milliseconds: 150));
-          });
-          await tester.pump(const Duration(milliseconds: 100));
-        }
+      // ۲) انتخاب مشتری از CRM — جستجوی واقعی در دیالوگ (بند ۱۰)
+      await tapHere(tester, find.byType(InputDecorator));
+      await tester.pump(const Duration(milliseconds: 350));
+      final searchBox = find.descendant(
+          of: find.byType(AlertDialog), matching: find.byType(TextField));
+      expect(searchBox.evaluate().isNotEmpty, isTrue,
+          reason: 'دیالوگ جستجوی مشتری باز نشد');
+      await tester.enterText(searchBox.first, o['name']!);
+      await tester.pump(const Duration(milliseconds: 100));
+      for (var k = 0; k < 6; k++) {
+        await tester.runAsync(() async {
+          await Future.delayed(const Duration(milliseconds: 200));
+        });
+        await tester.pump(const Duration(milliseconds: 100));
+        if (find.text(o['name']!).evaluate().isNotEmpty) break;
       }
-      expect(opened, isTrue,
-          reason: 'منوی انتخاب مشتری باز نشد — بارگذاری CRM کامل نشده است');
-      if (itemFinder.evaluate().isEmpty) {
-        await tester.drag(find.byType(Scrollable).last, const Offset(0, -120));
-        await tester.pump(const Duration(milliseconds: 150));
-      }
-      await tester.tap(itemFinder);
-      await tester.pump(const Duration(milliseconds: 250));
+      final exact = find.text(o['name']!);
+      expect(exact.evaluate().isNotEmpty, isTrue,
+          reason: 'نتیجه جستجو «${o['name']}» پیدا نشد');
+      await tester.tap(exact.last);
+      await tester.pump(const Duration(milliseconds: 300));
 
       // ۳) دستگاه
       await fill(tester, 'مدل دستگاه *', o['model']!);
       await fill(tester, 'شماره سریال / IMEI', o['serial']!);
       await fill(tester, 'عیب دستگاه اعلامی *', o['defect']!);
-      await fill(tester, 'وضعیت تلفنی دستگاه', o['state']!);
+      await fill(tester, 'وضعیت ظاهری کالا', o['state']!);
 
       // ۴) مبالغ — با ارقام فارسی همان‌طور که کاربر تایپ می‌کند
       await fill(tester, 'قیمت احتمالی (تومان)',
@@ -222,9 +217,11 @@ void main() {
           o['deposit'] == '0' ? '' : toPersianDigits(o['deposit']!));
 
       // ۵) موعد تحویل — فردا، شمسی ۱۴۰۵/۰۹/۰۵
-      await fill(tester, 'تاریخ تحویل (شمسی) *', '۱۴۰۵/۰۹/۰۵');
+      await fill(tester, 'تاریخ تحویل (شمسی) — خالی = بعد از بررسی اعلام می‌گردد',
+          '۱۴۰۵/۰۹/۰۵');
       await tester.pump(const Duration(milliseconds: 150));
-      final dateField = find.widgetWithText(TextField, 'تاریخ تحویل (شمسی) *');
+      final dateField = find.widgetWithText(
+          TextField, 'تاریخ تحویل (شمسی) — خالی = بعد از بررسی اعلام می‌گردد');
       var dateText = tester.widget<TextField>(dateField).controller?.text ?? '';
       if (dateText != '۱۴۰۵/۰۹/۰۵') {
         await tester.enterText(dateField, '۱۴۰۵/۰۹/۰۵');
@@ -251,13 +248,16 @@ void main() {
       // ۸) اقرارنامه — خود چک‌باکس (نه متن داخل ListTile)
       await tapHere(tester, find.byType(Checkbox));
 
-      // ۹) امضای مشتری — اگر بوم در دید بود، کشیدن واقعی؛ بدون امضا هم رسید معتبر است
-      if (await revealSoft(tester, find.byType(Signature))) {
-        await tester.drag(find.byType(Signature), const Offset(90, 45));
-        await tester.drag(find.byType(Signature), const Offset(-30, 30));
-        await tester.pump(const Duration(milliseconds: 150));
+      // ۹) پترن قفل — بند ۷: اگر فیلد در دید بود، چند نقطه زده می‌شود؛ بدون پترن هم معتبر است
+      if (await revealSoft(tester, find.text('۱'))) {
+        try {
+          await tester.tap(find.text('۱').last, warnIfMissed: false);
+          await tester.pump(const Duration(milliseconds: 120));
+          await tester.tap(find.text('۵').last, warnIfMissed: false);
+          await tester.pump(const Duration(milliseconds: 120));
+        } catch (_) {}
       } else {
-        print('PROG5 iter=$i بوم امضا یافت نشد — بدون امضا ادامه');
+        print('PROG5 iter=$i فیلد پترن قفل یافت نشد — بدون پترن ادامه');
       }
 
       // ۱۰) ثبت پذیرش و صدور رسید — دکمه‌ای که کاربر واقعی می‌زند

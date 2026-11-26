@@ -111,6 +111,10 @@ class Ticket {
   int? assignedBy; // کاربری که واگذار کرده
   String assignedAt; // زمان آخرین واگذاری
 
+  // فاز ۴ — پترن قفل دستگاه (بند ۷) و تحویل بی‌تاریخ (بند ۱۰)
+  String lockPattern; // مثل «1-5-9»
+  bool dueUnknown; // تاریخ تحویل بعد از بررسی اعلام می‌شود
+
   /// کش نام مشتری برای کارتابل لیستی — ذخیره در بانک نمی‌شود
   String? customerNameCache;
 
@@ -135,6 +139,8 @@ class Ticket {
     this.assignedTo,
     this.assignedBy,
     this.assignedAt = '',
+    this.lockPattern = '',
+    this.dueUnknown = false,
     String? createdAt,
   })  : accessories = accessories ?? [],
         createdAt = createdAt ?? DateTime.now().toIso8601String(),
@@ -161,6 +167,8 @@ class Ticket {
         assignedTo: m['assigned_to'] as int?,
         assignedBy: m['assigned_by'] as int?,
         assignedAt: (m['assigned_at'] ?? '') as String,
+        lockPattern: (m['lock_pattern'] ?? '') as String,
+        dueUnknown: ((m['due_unknown'] ?? 0) as int) == 1,
         createdAt: (m['created_at'] ?? '') as String,
       );
 
@@ -202,6 +210,8 @@ class Ticket {
         if (assignedTo != null) 'assigned_to': assignedTo,
         if (assignedBy != null) 'assigned_by': assignedBy,
         'assigned_at': assignedAt,
+        'lock_pattern': lockPattern,
+        'due_unknown': dueUnknown ? 1 : 0,
         'created_at': createdAt,
         'updated_at': updatedAt,
       };

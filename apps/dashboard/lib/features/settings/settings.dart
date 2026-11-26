@@ -1,4 +1,5 @@
-/// تنظیمات (N-01) — اطلاعات فروشگاه و تنظیمات یادآوری
+/// تنظیمات (N-01 + فاز ۴) — اطلاعات فروشگاه، یادآوری با عدد دلخواه (بند ۱)،
+/// لوازم همراه قابل ویرایش (بند ۱۰)، تصاویر امضا/مهر/لوگو (بند ۶ و ۱۸)
 library;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
+import '../../core/services/shop_settings_service.dart';
 import '../../core/utils.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -20,9 +22,16 @@ class _SettingsPageState extends State<SettingsPage> {
   final shopAddress = TextEditingController();
   final shopPhone = TextEditingController();
   final shopEmail = TextEditingController();
-  int leadDays = ReminderPrefs.defaultLeadDays;
+  final leadDaysCtrl = TextEditingController();
   int reminderHour = ReminderPrefs.defaultHour;
   bool saved = false;
+
+  // لوازم همراه — قابل ویرایش (بند ۱۰)
+  List<String> accessories = [];
+  final newAccessory = TextEditingController();
+
+  // تصاویر فروشگاه — امضا/مهر/لوگو (بند ۶)
+  final Map<ShopImage, String> imagePaths = {};
 
   @override
   void initState() {
@@ -32,7 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in [shopName, shopAddress, shopPhone, shopEmail]) {
+    for (final c in [shopName, shopAddress, shopPhone, shopEmail, leadDaysCtrl, newAccessory]) {
       c.dispose();
     }
     super.dispose();
@@ -40,14 +49,23 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _load() async {
     final s = await SettingsRepo.all();
+    final acc = await ShopSettingsService.loadAccessories();
+    final paths = <ShopImage, String>{};
+    for (final kind in ShopImage.values) {
+      paths[kind] = await ShopSettingsService.pathOf(kind);
+    }
     if (!mounted) return;
     setState(() {
       shopName.text = s['name'] ?? '';
       shopAddress.text = s['address'] ?? '';
       shopPhone.text = s['phone'] ?? '';
       shopEmail.text = s['email'] ?? '';
-      leadDays = int.tryParse(s['reminder_lead_days'] ?? '') ?? ReminderPrefs.defaultLeadDays;
-      reminderHour = int.tryParse(s['reminder_hour'] ?? '') ?? ReminderPrefs.defaultHour;
+      leadDaysCtrl.text =
+          s['reminder_lead_days'] ?? '${ReminderPrefs.defaultLeadDays}';
+      reminderHour =
+          int.tryParse(s['reminder_hour'] ?? '') ?? ReminderPrefs.defaultHour;
+      accessories = acc;
+      imagePaths.addAll(paths);
     });
   }
 
@@ -59,12 +77,35 @@ class _SettingsPageState extends State<SettingsPage> {
         'phone': shopPhone.text.trim(),
         'email': shopEmail.text.trim(),
       },
-      leadDays: leadDays,
+      leadDays: ReminderPrefs.clampLeadDays(
+          int.tryParse(toEnglishDigits(leadDaysCtrl.text)) ??
+              ReminderPrefs.defaultLeadDays),
       hour: reminderHour,
     );
+    await ShopSettingsService.saveAccessories(accessories);
     setState(() => saved = true);
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) setState(() => saved = false);
+  }
+
+  Future<void> _pickImage(ShopImage kind) async {
+    final err = await ShopSettingsService.pickAndSave(kind);
+    if (err != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    final path = await ShopSettingsService.pathOf(kind);
+    if (!mounted) return;
+    setState(() => imagePaths[kind] = path);
+  }
+
+  Future<void> _clearImage(ShopImage kind) async {
+    await ShopSettingsService.clear(kind);
+    if (!mounted) return;
+    setState(() => imagePaths[kind] = '');
   }
 
   @override
@@ -85,18 +126,20 @@ class _SettingsPageState extends State<SettingsPage> {
             _f(shopPhone, 'تلفن'),
             _f(shopEmail, 'ایمیل فروشگاه (در سربرگ رسیدها نمایش داده می‌شود)'),
             const SizedBox(height: 16),
-            const Text('تنظیمات یادآوری', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('تنظیمات یادآوری',
+                style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              children: [
-                for (final d in ReminderPrefs.allowedLeadDays)
-                  ChoiceChip(
-                    label: Text('${toPersianDigits('$d')} روز قبل از موعد'),
-                    selected: leadDays == d,
-                    onSelected: (_) => setState(() => leadDays = d),
-                  ),
-              ],
+            // بند ۱ — عدد دلخواه، نه فقط ۲/۳/۷
+            SizedBox(
+              width: 220,
+              child: TextField(
+                controller: leadDaysCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'یادآوری چند روز قبل از موعد؟ (۱ تا ۳۰)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
             ),
             const SizedBox(height: 6),
             Text('ساعت یادآوری روزانه: ${toPersianDigits('$reminderHour:00')}'),
@@ -107,6 +150,52 @@ class _SettingsPageState extends State<SettingsPage> {
               divisions: 23,
               onChanged: (v) => setState(() => reminderHour = v.round()),
             ),
+            const SizedBox(height: 14),
+            // بند ۱۰ — لوازم همراه قابل ویرایش
+            const Text('لوازم همراه دستگاه (در فرم پذیرش نمایش داده می‌شود)',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (var i = 0; i < accessories.length; i++)
+                  InputChip(
+                    label: Text(accessories[i]),
+                    onDeleted: () =>
+                        setState(() => accessories.removeAt(i)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: newAccessory,
+                    decoration: const InputDecoration(
+                      labelText: 'مورد جدید (مثلاً شارژر)',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _addAccessory(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _addAccessory,
+                  icon: const Icon(Icons.add),
+                  tooltip: 'افزودن',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // بند ۶ و ۱۸ — تصاویر امضا/مهر/لوگو
+            const Text(
+                'تصاویر فروشگاه (در فرم‌ها و فاکتورها به انتخاب کاربر استفاده می‌شود)',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            for (final kind in ShopImage.values) _imageRow(kind),
             const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: _save,
@@ -122,6 +211,51 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _addAccessory() async {
+    final v = newAccessory.text.trim();
+    if (v.isEmpty || accessories.contains(v)) return;
+    setState(() => accessories.add(v));
+    newAccessory.clear();
+    await ShopSettingsService.saveAccessories(accessories);
+  }
+
+  Widget _imageRow(ShopImage kind) {
+    final path = imagePaths[kind] ?? '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(kind.labelFa,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          ),
+          Expanded(
+            child: Text(
+              path.isEmpty ? 'ثبت نشده' : path.split('/').last,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: path.isEmpty
+                      ? Colors.red
+                      : Theme.of(context).colorScheme.outline),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            tooltip: 'انتخاب فایل تصویر',
+            icon: const Icon(Icons.upload_file, size: 19),
+            onPressed: () => _pickImage(kind),
+          ),
+          IconButton(
+            tooltip: 'پاک کردن',
+            icon: const Icon(Icons.delete_outline, size: 19),
+            onPressed: path.isEmpty ? null : () => _clearImage(kind),
+          ),
+        ],
       ),
     );
   }

@@ -218,9 +218,10 @@ class Db {
         'activated_at',
         'last_seen_date',
       ],
-      // فاز ۲ — واگذاری سفارش
+      // فاز ۲ — واگذاری سفارش | فاز ۴ — پترن قفل (بند ۷)
       'tickets': [
         'assigned_at',
+        'lock_pattern',
       ],
       // فاز ۲ — تاریخچه وضعیت با کاربر و دلیل
       'ticket_status_log': [
@@ -235,6 +236,7 @@ class Db {
         'created_by',
         'assigned_to',
         'assigned_by',
+        'due_unknown',
       ],
       'ticket_status_log': [
         'user_id',

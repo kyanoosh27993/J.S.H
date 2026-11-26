@@ -48,12 +48,14 @@ class CustomerRepo {
   static Future<List<Customer>> search(String q) async {
     final db = await Db.instance();
     final like = '%$q%';
+    // بند ۱۰ — جستجو در همه فیلدهای مهم مشتری
     final rows = await db.query(
       'customers',
       where: q.isEmpty
           ? null
-          : 'name LIKE ? OR phone LIKE ? OR national_id LIKE ?',
-      whereArgs: q.isEmpty ? null : [like, like, like],
+          : 'name LIKE ? OR phone LIKE ? OR national_id LIKE ? OR '
+              'father_name LIKE ? OR tag LIKE ? OR address LIKE ?',
+      whereArgs: q.isEmpty ? null : [like, like, like, like, like, like],
       orderBy: 'id DESC',
       limit: 200,
     );
