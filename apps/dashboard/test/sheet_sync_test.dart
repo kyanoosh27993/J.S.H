@@ -1,4 +1,6 @@
 /// تست سرویس همگام‌سازی Google Sheet — منطق خالص ساخت ردیف (بدون بانک/شبکه)
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jsh_service_dashboard/core/constants.dart';
@@ -8,13 +10,12 @@ import 'package:jsh_service_dashboard/core/utils.dart';
 void main() {
   test('ستون‌های شیت هماهنگ با ماژول پایتونی هستند (۱۲ ستون)', () {
     expect(SheetSyncConst.headers.length, 12);
-    expect(
-        SheetSyncConst.sheetId, '1UqbXVRUE0Fyf_CWS8Crr6mCGsEmSpvulLzt-IRoK6IQ');
+    expect(SheetSyncConst.sheetId,
+        '1UqbXVRUE0Fyf_CWS8Crr6mCGsEmSpvulLzt-IRoK6IQ');
     expect(SheetSyncConst.defaultTab, 'داشبورد تعمیرات و خدمات J.S.H');
   });
 
-  test('ردیف: ارقام فارسی برای هزینه و تاریخ شمسی، انگلیسی برای شناسه و میلادی — قاعده ۱',
-      () {
+  test('ردیف: ارقام فارسی برای هزینه و تاریخ شمسی، انگلیسی برای شناسه و میلادی — قاعده ۱', () {
     final row = SheetSyncService.buildRow({
       'code': 'T-1001',
       'customer_name': 'علی رضایی',
@@ -26,8 +27,7 @@ void main() {
       'deposit_amount': 500000,
       'due_date': '2026-11-27',
       'created_at': '2026-11-26 10:30',
-    }, 1,
-        tomorrow: DateTime(2026, 11, 27));
+    }, 1, tomorrow: DateTime(2026, 11, 27));
 
     expect(row.length, 12);
     expect(row[0], 1); // شماره ردیف انگلیسی
@@ -52,15 +52,14 @@ void main() {
       'deposit_amount': 0,
       'due_date': '2026-12-01',
       'created_at': '2026-11-26 12:00',
-    }, 2,
-        tomorrow: DateTime(2026, 11, 27));
+    }, 2, tomorrow: DateTime(2026, 11, 27));
 
     expect(row[9], ''); // هزینه صفر → خالی
     expect(row[10], ''); // یادداشت خالی
     expect(row[11], '2026-11-26 12:00'); // زمان ثبت حفظ شده
   });
 
-  test('شماره تلفن بدون صفر ابتدایی دست‌نخورده می‌ماند', () {
+  test('شماره تلفن با پیشوند فارسی یا بدون صفر هم امن است', () {
     final row = SheetSyncService.buildRow({
       'code': 'T-1003',
       'customer_name': 'x',
@@ -75,5 +74,25 @@ void main() {
     }, 3);
     expect(row[3], '9139999'); // بدون صفر → دست‌نخورده
     expect(row[8], TicketStatus.labels['ready']);
+  });
+
+  test('رمزگذاری عملیات: رفت‌وبرگشت append/update/delete', () {
+    const row = <dynamic>['', 'T-9', 'مشتری', "'0913", 'دستگاه', '', '',
+      '', 'ثبت شده', '', '', ''];
+    for (final op in [SheetOp.append, SheetOp.update, SheetOp.delete]) {
+      final (gotOp, gotRow) = SheetSyncService.decodePayload(
+          SheetSyncService.encodePayload(op, row));
+      expect(gotOp, op);
+      expect(gotRow, row);
+    }
+  });
+
+  test('سازگاری با payloadهای آرایه‌ای نسخه قبلی — append در نظر گرفته می‌شوند', () {
+    final legacy = jsonEncode([
+      '', 'T-OLD', 'مشتری قدیمی', '', '', '', '', '', '', '', '', ''
+    ]);
+    final (op, row) = SheetSyncService.decodePayload(legacy);
+    expect(op, SheetOp.append);
+    expect(row[1], 'T-OLD');
   });
 }

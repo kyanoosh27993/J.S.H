@@ -1,8 +1,11 @@
 /// لایه دسترسی به داده — ریپازیتوری‌های برنامه
 library;
 
+import 'dart:async';
+
 import 'db/db.dart';
 import 'models.dart';
+import 'services/sheet_sync_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class SettingsRepo {
@@ -88,13 +91,40 @@ class DeviceRepo {
 class TicketRepo {
   static Future<int> insert(Ticket t) async {
     final db = await Db.instance();
-    return db.insert('tickets', t.toMap());
+    final id = await db.insert('tickets', t.toMap());
+    // آینه شیت: سفارش تازه → افزودن ردیف (بدون انسداد جریان اصلی)
+    unawaited(SheetSyncService.onTicketChanged(t.code));
+    return id;
   }
 
   static Future<void> update(Ticket t) async {
     t.updatedAt = DateTime.now().toIso8601String();
     final db = await Db.instance();
     await db.update('tickets', t.toMap(), where: 'id = ?', whereArgs: [t.id]);
+    // آینه شیت: ویرایش سفارش → به‌روزرسانی ردیف متناظر
+    unawaited(SheetSyncService.onTicketChanged(t.code));
+  }
+
+  /// حذف کامل سفارش با وابستگی‌ها — ردیف شیت هم حذف می‌شود
+  static Future<void> delete(int id) async {
+    final db = await Db.instance();
+    final t = await byId(id);
+    if (t == null) return;
+    final items = await db.query('ticket_items',
+        columns: ['id'], where: 'ticket_id = ?', whereArgs: [id]);
+    for (final it in items) {
+      await db.delete('warranties',
+          where: 'ticket_item_id = ?', whereArgs: [it['id']]);
+    }
+    await db.delete('invoices', where: 'ticket_id = ?', whereArgs: [id]);
+    await db
+        .delete('ticket_items', where: 'ticket_id = ?', whereArgs: [id]);
+    await db.delete('payments', where: 'ticket_id = ?', whereArgs: [id]);
+    await db.delete('ticket_status_log',
+        where: 'ticket_id = ?', whereArgs: [id]);
+    await db.delete('tickets', where: 'id = ?', whereArgs: [id]);
+    // آینه شیت: حذف سفارش → حذف ردیف متناظر
+    unawaited(SheetSyncService.onTicketDeleted(t.code));
   }
 
   static Future<Ticket?> byId(int id) async {

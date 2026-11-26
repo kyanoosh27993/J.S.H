@@ -1,18 +1,23 @@
-/// سرویس همگام‌سازی Google Sheet — جایگزین کانال Google Calendar
+/// سرویس همگام‌سازی Google Sheet — کانال دوسویه مبتنی بر رویداد
 ///
-/// کانال جدید: شیت «داشبورد تعمیرات و خدمات J.S.H» که برنامه مدیریت می‌کند و
-/// با شرکت و توسعه‌دهنده به اشتراک گذاشته شده است.
+/// شیت «داشبورد تعمیرات و خدمات J.S.H» آینه‌ی سفارش‌های برنامه است:
+///  • افزودن سفارش در برنامه  → ردیف به شیت اضافه می‌شود (append)
+///  • ویرایش سفارش در برنامه   → ردیف متناظر (با کلید «شناسه سفارش») به‌روز می‌شود (update)
+///  • حذف سفارش در برنامه      → ردیف از شیت حذف می‌شود (delete)
 ///
 /// معماری آفلاین‌محور:
-///  • مرجع داده = SQLite محلی؛ هر سفارش قبل از ارسال در جدول sheet_outbox صف می‌شود.
-///  • ارسال از طریق Apps Script Web App (آدرس در settings ذخیره می‌شود) انجام
-///    می‌شود؛ بدون کلید API داخل برنامه — ایمن روی ویندوز و اندروید.
-///  • بدون اینترنت یا بدون آدرس endpoint → «در صف آفلاین» می‌ماند؛ هیچ داده‌ای
-///    گم نمی‌شود و با اولین اتصال flush می‌شود.
+///  • مرجع داده = SQLite محلی؛ هر رویداد در جدول sheet_outbox با نوع عملیات صف می‌شود.
+///  • ادغام رویدادها (coalescing): اگر سفارشی چند بار ویرایش شود قبل از ارسال،
+///    فقط آخرین وضعیت ارسال می‌شود؛ «حذف» روی «افزودنِ در انتظار» = حذف خود ردیف صف.
+///  • ارسال از طریق Apps Script Web App (آدرس در settings)؛ بدون کلید API در برنامه.
+///  • بدون اینترنت یا endpoint → در صف می‌ماند و با اولین اتصال flush می‌شود.
+///  • pushAll یک «آشتی‌سازی» کامل هم انجام می‌دهد: ردیف‌های همگام‌شده‌ای که
+///    داده‌شان با بانک فرق کرده (مثلاً بعد از ادغام بسته همگام‌سازی) به‌روز می‌شوند.
 ///  • قاعده ۱: ارقام فارسی برای نمایش (تاریخ شمسی، هزینه)؛ شناسه و میلادی انگلیسی.
 ///  • شماره تلفن با پیشوند آپاستروف متنی می‌ماند تا صفر ابتدایی حذف نشود.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,12 +27,14 @@ import '../constants.dart';
 import '../db/db.dart';
 import '../utils.dart';
 
-/// ستون‌های شیت — هماهنگ با ماژول پایتونی src/jsh/sheets_sync.py
+/// ستون‌های شیت — هماهنگ با Apps Script و ماژول مرجع پایتونی
 class SheetSyncConst {
   static const String sheetId = '1UqbXVRUE0Fyf_CWS8Crr6mCGsEmSpvulLzt-IRoK6IQ';
   static const String sheetUrl =
       'https://docs.google.com/spreadsheets/d/$sheetId/edit';
   static const String defaultTab = 'داشبورد تعمیرات و خدمات J.S.H';
+  /// ستون کلید در شیت: «شناسه سفارش» (B) — مبنای update/delete
+  static const int codeColumn = 1;
   static const List<String> headers = [
     'ردیف', 'شناسه سفارش', 'نام مشتری', 'تلفن', 'دستگاه',
     'شرح خرابی', 'تاریخ شمسی', 'تاریخ میلادی', 'وضعیت',
@@ -44,6 +51,13 @@ class SheetSyncConst {
     )''';
 }
 
+/// نوع عملیات صف — متناظر با doPost در Apps Script
+class SheetOp {
+  static const String append = 'append';
+  static const String update = 'update';
+  static const String delete = 'delete';
+}
+
 /// گزارش همگام‌سازی برای نمایش در رابط کاربری
 class SheetSyncReport {
   final int queued;
@@ -58,11 +72,11 @@ class SheetSyncReport {
 
   String get fa {
     final parts = <String>[];
-    if (sent > 0) parts.add('$sent ردیف به شیت ارسال شد');
+    if (sent > 0) parts.add('$sent عملیات به شیت اعمال شد');
     if (queued > 0) {
       parts.add(online
-          ? '$queued ردیف در صف آفلاین ماند (ارسال ناموفق)'
-          : 'بدون اینترنت — $queued ردیف در صف آفلاین ماند');
+          ? '$queued عملیات در صف آفلاین ماند (ارسال ناموفق)'
+          : 'بدون اینترنت — $queued عملیات در صف آفلاین ماند');
     }
     if (parts.isEmpty) return 'همه سفارش‌ها همگام هستند';
     return parts.join('؛ ');
@@ -93,6 +107,9 @@ class SheetSyncService {
 
   /// تاریخ شمسی با ارقام فارسی — قاعده ۱
   static String jalaliFa(DateTime d) => shamsiDate(d);
+
+  static DateTime _tomorrow() =>
+      DateTime.now().add(const Duration(days: 1));
 
   /// یک ردیف شیت از روی داده سفارش — خالص و قابل تست
   static List<dynamic> buildRow(Map<String, dynamic> t, int rowNo,
@@ -128,8 +145,121 @@ class SheetSyncService {
     ];
   }
 
+  // ---------------------------------------------------------------
+  // رمزگذاری payload: {"op": ..., "row": [...]} — سازگار با آرایه قدیمی
+  // ---------------------------------------------------------------
+
+  static String encodePayload(String op, List<dynamic> row) =>
+      jsonEncode({'op': op, 'row': row});
+
+  /// خواندن payload — payloadهای آرایه‌ای نسخه قبلی = append در نظر گرفته می‌شوند
+  static (String, List<dynamic>) decodePayload(String raw) {
+    final v = jsonDecode(raw);
+    if (v is List) return (SheetOp.append, List<dynamic>.from(v));
+    final m = v as Map<String, dynamic>;
+    return (m['op'] as String, List<dynamic>.from(m['row'] as List));
+  }
+
+  static Future<void> _enqueue(
+      Database db, String code, String op, List<dynamic> row) async {
+    await db.insert(
+      'sheet_outbox',
+      {
+        'code': code,
+        'payload': encodePayload(op, row),
+        'synced': 0,
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// داده کامل یک سفارش با همان SELECT موجود در pushAll
+  static Future<Map<String, dynamic>?> _ticketByCode(
+      Database db, String code) async {
+    final rows = await db.rawQuery('''
+      SELECT t.code, t.defect, t.status, t.estimate_amount,
+             t.deposit_amount, t.due_date, t.created_at,
+             c.name AS customer_name, c.phone AS phone,
+             d.model AS device_model
+      FROM tickets t
+      JOIN customers c ON c.id = t.customer_id
+      JOIN devices d ON d.id = t.device_id
+      WHERE t.code = ?
+    ''', [code]);
+    return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+  }
+
+  // ---------------------------------------------------------------
+  // هوک‌های رویداد — از TicketRepo.insert/update/delete صدا زده می‌شوند
+  // ---------------------------------------------------------------
+
+  /// پس از افزودن یا ویرایش سفارش — ردیف شیت همگام می‌شود
+  static Future<void> onTicketChanged(String code) async {
+    try {
+      final db = await Db.instance();
+      await _ensureOutbox(db);
+      final t = await _ticketByCode(db, code);
+      if (t == null) return; // سفارش وجود ندارد؛ حذف با onTicketDeleted
+      final row = buildRow(t, 0, tomorrow: _tomorrow());
+      final existing = await db
+          .query('sheet_outbox', where: 'code = ?', whereArgs: [code]);
+      if (existing.isEmpty) {
+        await _enqueue(db, code, SheetOp.append, row);
+        return;
+      }
+      final (op, _) =
+          decodePayload(existing.first['payload'] as String);
+      final synced = existing.first['synced'] as int? ?? 0;
+      if (op == SheetOp.delete) {
+        // حذف در صف بوده و سفارش دوباره ساخته شده → به‌روزرسانی
+        await _enqueue(db, code, SheetOp.update, row);
+      } else if (synced == 1) {
+        // قبلاً در شیت هست → ویرایش
+        await _enqueue(db, code, SheetOp.update, row);
+      } else {
+        // append/update در انتظار → فقط با داده تازه جایگزین می‌شود
+        await _enqueue(db, code, op, row);
+      }
+    } catch (_) {
+      // همگام‌سازی هرگز جریان اصلی برنامه را نمی‌شکند؛ دفعه بعد flush جبران می‌کند
+    }
+  }
+
+  /// پس از حذف سفارش — ردیف شیت حذف می‌شود
+  static Future<void> onTicketDeleted(String code) async {
+    try {
+      final db = await Db.instance();
+      await _ensureOutbox(db);
+      final existing = await db
+          .query('sheet_outbox', where: 'code = ?', whereArgs: [code]);
+      if (existing.isEmpty) return; // هرگز به شیت نرسیده — چیزی برای حذف نیست
+      final (op, _) =
+          decodePayload(existing.first['payload'] as String);
+      final synced = existing.first['synced'] as int? ?? 0;
+      if (op == SheetOp.append && synced == 0) {
+        // فقط در صف بود و هنوز به شیت نرسیده → خود ردیف صف حذف می‌شود
+        await db
+            .delete('sheet_outbox', where: 'code = ?', whereArgs: [code]);
+        return;
+      }
+      // در شیت هست (یا update در صف است) → حذف واقعی از شیت صف می‌شود
+      await _enqueue(db, code, SheetOp.delete, [0, code]);
+    } catch (_) {
+      // همان سیاست فوق — هیچ‌گاه جریان اصلی را نمی‌شکند
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // آشتی‌سازی کامل + flush
+  // ---------------------------------------------------------------
+
   /// صف‌کردن سفارش‌ها و تلاش ارسال — هسته کانال Google Sheet
-  static Future<SheetSyncReport> pushAll({bool includeDelivered = false}) async {
+  ///
+  /// علاوه بر سفارش‌های تازه، اختلاف ردیف‌های همگام‌شده با بانک را هم
+  /// پیدا و به‌روز می‌کند (آشتی‌سازی — مثلاً بعد از ادغام بسته همگام‌سازی).
+  static Future<SheetSyncReport> pushAll(
+      {bool includeDelivered = false}) async {
     final db = await Db.instance();
     await _ensureOutbox(db);
 
@@ -145,33 +275,54 @@ class SheetSyncService {
       ORDER BY t.id ASC
     ''');
 
-    final tomorrow = DateTime.now().add(const Duration(days: 1));
-    // جلوگیری از ارسال تکراری: کدهایی که قبلاً به شیت رسیده‌اند دیگر صف نمی‌شوند
-    final syncedRows = await db.query('sheet_outbox',
-        columns: ['code'], where: 'synced = 1');
-    final syncedCodes = syncedRows.map((r) => r['code'] as String).toSet();
-    var queued = 0;
-    for (final t in tickets) {
+    final tomorrow = _tomorrow();
+    final outboxRows = await db.query('sheet_outbox');
+    final outbox = <String, (String, int, List<dynamic>)>{};
+    for (final r in outboxRows) {
+      final (op, row) = decodePayload(r['payload'] as String);
+      outbox[r['code'] as String] =
+          (op, r['synced'] as int? ?? 0, row);
+    }
+
+    for (final raw in tickets) {
+      final t = Map<String, dynamic>.from(raw);
       final code = t['code'] as String;
-      if (syncedCodes.contains(code)) continue; // قبلاً در شیت هست
-      await db.insert(
-        'sheet_outbox',
-        {
-          'code': code,
-          'payload': jsonEncode(buildRow(Map<String, dynamic>.from(t),
-              0, tomorrow: tomorrow)),
-          'synced': 0,
-          'created_at': DateTime.now().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace, // فقط ردیف‌های در انتظار به‌روز می‌شوند
-      );
-      queued++;
+      final row = buildRow(t, 0, tomorrow: tomorrow);
+      final state = outbox[code];
+      if (state == null) {
+        await _enqueue(db, code, SheetOp.append, row);
+      } else {
+        final (op, synced, oldRow) = state;
+        if (synced == 1) {
+          // آشتی‌سازی: اگر داده بانک با شیت فرق کرده → ویرایش
+          if (!_rowsEqualExceptRowNo(oldRow, row)) {
+            await _enqueue(db, code, SheetOp.update, row);
+          }
+        } else if (op == SheetOp.delete) {
+          // حذف در صف است؛ سفارش موجود → به‌روزرسانی
+          await _enqueue(db, code, SheetOp.update, row);
+        } else {
+          // append/update در انتظار → داده تازه می‌شود (بدون عملیات تکراری)
+          await _enqueue(db, code, op, row);
+        }
+      }
     }
 
     return flush();
   }
 
-  /// flush صف: ارسال همه ردیف‌های همگام‌نشده به Apps Script endpoint
+  /// مقایسه محتوای ردیف بدون ستون «ردیف» (اندیس ۰ نمایشی است)
+  static bool _rowsEqualExceptRowNo(
+      List<dynamic> a, List<dynamic> b) {
+    for (var i = 1; i < SheetSyncConst.headers.length; i++) {
+      final av = i < a.length ? a[i] : '';
+      final bv = i < b.length ? b[i] : '';
+      if (av?.toString() != bv?.toString()) return false;
+    }
+    return true;
+  }
+
+  /// flush صف: اعمال همه عملیات در انتظار روی شیت از طریق Apps Script
   static Future<SheetSyncReport> flush() async {
     final db = await Db.instance();
     await _ensureOutbox(db);
@@ -187,15 +338,14 @@ class SheetSyncService {
           queued: pending.length, sent: 0, online: false);
     }
 
-    final rows = <List<dynamic>>[];
+    // هر عملیات مستقل اعمال می‌شود؛ appendها با هم در یک دسته می‌روند
+    final ops = <Map<String, dynamic>>[];
     final codes = <String>[];
     for (final r in pending) {
-      rows.add(List<dynamic>.from(jsonDecode(r['payload'] as String) as List));
-      codes.add(r['code'] as String);
-    }
-    // شماره ردیف را بر اساس طول ردیف‌ها بازنویسی می‌کنیم (۱..n)
-    for (var i = 0; i < rows.length; i++) {
-      rows[i][0] = i + 1;
+      final (op, row) = decodePayload(r['payload'] as String);
+      final code = r['code'] as String;
+      ops.add({'op': op, 'code': code, 'row': row});
+      codes.add(code);
     }
 
     try {
@@ -207,13 +357,14 @@ class SheetSyncService {
       req.write(jsonEncode({
         'tab': SheetSyncConst.defaultTab,
         'sheetId': SheetSyncConst.sheetId,
-        'rows': rows,
+        'headers': SheetSyncConst.headers,
+        'ops': ops,
       }));
       final res = await req.close();
       final body = await res.transform(utf8.decoder).join();
       client.close();
 
-      if (res.statusCode == 200 && body.contains('"ok"')) {
+      if (res.statusCode == 200 && body.contains('"ok":true')) {
         for (final code in codes) {
           await db.update('sheet_outbox', {'synced': 1},
               where: 'code = ?', whereArgs: [code]);
@@ -228,7 +379,7 @@ class SheetSyncService {
     }
   }
 
-  /// تعداد ردیف‌های منتظر در صف — برای نمایش وضعیت در داشبورد
+  /// تعداد عملیات منتظر در صف — برای نمایش وضعیت در داشبورد
   static Future<int> pendingCount() async {
     final db = await Db.instance();
     await _ensureOutbox(db);
