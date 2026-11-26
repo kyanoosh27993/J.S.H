@@ -27,7 +27,6 @@ class _DashboardPageState extends State<DashboardPage> {
   int deliveredMonth = 0;
   int receivable = 0;
   int expiringWarranties = 0;
-  bool pendingEmails = false;
   List<ChartPoint> statusCounts = [];
   List<ChartPoint> receivableByStatus = [];
   List<ChartPoint> revenueLine = [];
@@ -46,7 +45,6 @@ class _DashboardPageState extends State<DashboardPage> {
     final forecast = await ForecastService.monthlyRevenue();
     final future = await ForecastService.forecast(months: 3);
     final wstats = await ForecastService.warrantyStats();
-    final pending = await EmailQueueRepo.hasPending();
 
     // دونات: تعداد سفارش‌ها به تفکیک وضعیت
     final counts = <String, int>{};
@@ -79,7 +77,6 @@ class _DashboardPageState extends State<DashboardPage> {
           .length;
       receivable = receivableSum;
       expiringWarranties = wstats.expiring + wstats.expired;
-      pendingEmails = pending;
       statusCounts = [
         for (final e in counts.entries)
           if (e.value > 0) ChartPoint(e.key, e.value.toDouble()),
@@ -142,19 +139,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   p.danger),
             ],
           ),
-          if (pendingEmails)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Card(
-                color: p.warning.withValues(alpha: 0.12),
-                child: ListTile(
-                  leading: Icon(Icons.hourglass_top, color: p.warning),
-                  title: AppText(
-                      'ایمیل‌هایی در صف ارسال است — با وصل شدن اینترنت خودکار ارسال می‌شوند.',
-                      style: const TextStyle(fontSize: 12.5)),
-                ),
-              ),
-            ),
           const SizedBox(height: 16),
           if (cfg.showChartsOnDashboard) ...[
             Wrap(

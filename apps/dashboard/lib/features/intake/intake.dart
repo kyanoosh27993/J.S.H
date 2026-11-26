@@ -1,4 +1,4 @@
-/// صفحه پذیرش (F-12-1) — فرم دیجیتال «رسید سپردن» + بیعانه + امضا + PDF + ایمیل + ICS
+/// صفحه پذیرش (F-12-1) — فرم دیجیتال «رسید سپردن» + بیعانه + امضا + PDF
 library;
 
 import 'dart:typed_data';
@@ -10,7 +10,6 @@ import 'package:signature/signature.dart';
 import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
-import '../../core/services/email_service.dart';
 import '../../core/services/pdf_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
@@ -149,35 +148,6 @@ class _IntakePageState extends State<IntakePage> {
       device: device,
       signatureBytes: sig ?? Uint8List(0),
     );
-
-    // ۷) ایمیل رسید + رویداد تقویمی (F-06)
-    final shopEmail = shop['email'] ?? '';
-    if (shopEmail.isNotEmpty && isValidEmail(shopEmail)) {
-      final remindAt = due.subtract(Duration(days: lead));
-      final ics = EmailService.buildIcs(
-        uid: 'ticket-${ticket.id}',
-        start: DateTime(remindAt.year, remindAt.month, remindAt.day, hour, 0),
-        durationMinutes: 30,
-        summary: 'یادآوری تحویل ${ticket.code} — ${device.model}',
-        description:
-            'یادآوری سفارش ${ticket.code}\nموعد تحویل: ${shamsiDate(due)} $dueTime\n'
-            'بیعانه: $depositVal تومان',
-        reminderMinutesBefore: 0,
-      );
-      await EmailQueueRepo.enqueue(
-        to: shopEmail,
-        subject: 'رسید سفارش ${ticket.code} — ${customer.name}',
-        body: 'سفارش جدید ثبت شد.\n'
-            'شماره رسید: ${ticket.code}\n'
-            'مشتری: ${customer.name} — تلفن: ${customer.phone}\n'
-            'دستگاه: ${device.model} — سریال: ${device.serial}\n'
-            'موعد تحویل: ${shamsiDate(due)} ساعت $dueTime\n'
-            'بیعانه: $depositVal تومان\n'
-            'PDF رسید پیوست است و رویداد تقویم یادآوری نیز ضمیمه شده است.',
-        attachmentPath: pdfPath,
-        icsContent: ics,
-      );
-    }
 
     if (!mounted) return;
     await showDialog(

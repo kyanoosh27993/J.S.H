@@ -1,5 +1,5 @@
 /// ویزارد راه‌اندازی اول (N-01 + N-03):
-/// ۱) مجوز ارسال گزارش به سازنده  ۲) ایمیل معتبر کاربر + SMTP
+/// ۱) مجوز ثبت گزارش فعال‌سازی  ۲) نام و ایمیل خریدار
 /// ۳) اطلاعات فروشگاه (پیش‌پر از اطلاعات سازنده تا اصلاح)  ۴) تنظیمات یادآوری
 library;
 
@@ -9,7 +9,6 @@ import 'package:signature/signature.dart';
 import '../../core/constants.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
-import '../../core/services/email_service.dart';
 import '../../core/services/install_report_service.dart';
 import '../../core/services/license_service.dart';
 import '../../core/utils.dart';
@@ -31,8 +30,6 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
 
   final buyerName = TextEditingController();
   final userEmail = TextEditingController();
-  final smtpUser = TextEditingController();
-  final smtpPass = TextEditingController();
   final shopName = TextEditingController();
   final shopAddress = TextEditingController();
   final shopPhone = TextEditingController();
@@ -59,7 +56,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
   @override
   void dispose() {
     for (final c in [
-      buyerName, userEmail, smtpUser, smtpPass, shopName, shopAddress, shopPhone, shopEmail,
+      buyerName, userEmail, shopName, shopAddress, shopPhone, shopEmail,
     ]) {
       c.dispose();
     }
@@ -73,8 +70,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
         return consent;
       case 1:
         return isValidEmail(userEmail.text.trim()) &&
-            isValidEmail(smtpUser.text.trim()) &&
-            smtpPass.text.isNotEmpty;
+            buyerName.text.trim().isNotEmpty;
       case 2:
         return shopName.text.trim().isNotEmpty &&
             shopPhone.text.trim().isNotEmpty;
@@ -109,19 +105,18 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
           'phone': shopPhone.text.trim(),
           'email': shopEmail.text.trim(),
         },
-        smtpCfg: SmtpConfig.gmail(smtpUser.text.trim(), smtpPass.text.trim()),
         leadDays: leadDays,
         hour: reminderHour,
       );
 
-      // ۴) صف گزارش نصب به شرکت سازنده (الزامی — N-03)
-      await InstallReportService.enqueueReport(
+      // ۴) ثبت محلی گزارش فعال‌سازی (الزامی — N-03، بدون ارسال ایمیلی)
+      await InstallReportService.writeReport(
         buyerName: s.license.buyerName,
         userEmail: s.license.userEmail,
         installCount: s.license.installCount,
         hardwareReport: s.license.hardwareReport,
       );
-      await EmailService.drainQueue(s.smtp);
+      await s.markReportSent();
 
       if (mounted) {
         widget.onDone();
@@ -150,8 +145,8 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _stepTile(0, 'مجوز ارسال گزارش به سازنده'),
-                    _stepTile(1, 'ایمیل و حساب ارسال شما'),
+                    _stepTile(0, 'مجوز ثبت گزارش فعال‌سازی'),
+                    _stepTile(1, 'نام و ایمیل خریدار'),
                     _stepTile(2, 'اطلاعات فروشگاه'),
                     _stepTile(3, 'تنظیمات یادآوری و امضا'),
                     const Spacer(),
@@ -172,7 +167,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
                         children: [
                           CircularProgressIndicator(),
                           SizedBox(height: 16),
-                          Text('در حال ثبت و ارسال گزارش فعال‌سازی به شرکت سازنده...'),
+                          Text('در حال ثبت گزارش فعال‌سازی...'),
                         ],
                       ))
                     : _body(context),
@@ -219,18 +214,18 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
     return ListView(
       children: [
         const Text(
-          'مجوز اتصال و ارسال گزارش فعال‌سازی',
+          'مجوز ثبت گزارش فعال‌سازی',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         const Text(
-          'پس از نصب، برنامه یک گزارش فعال‌سازی برای شرکت سازنده ارسال می‌کند شامل:\n'
+          'پس از نصب، برنامه یک گزارش فعال‌سازی را در همین دستگاه ثبت می‌کند شامل:\n'
           '• نام خریدار و ایمیل ثبت‌شده\n'
           '• تاریخ و ساعت نصب\n'
           '• مشخصات دستگاه (نام رایانه، ویندوز، پردازنده، حافظه)\n'
           '• شماره نصب فعلی و تعداد نصب باقیمانده مجاز\n\n'
-          'اگر اینترنت نداشته باشید، گزارش در صف می‌ماند و در اولین برقراری اینترنت ارسال می‌شود.\n'
-          'تا ارسال موفق این گزارش، برنامه راه‌اندازی نمی‌شود. این شرط بخشی از لایسنس تجاری است.',
+          'گزارش فقط به‌صورت محلی ذخیره می‌شود و به هیچ‌جایی ارسال نمی‌گردد.\n'
+          'تا تکمیل این گزارش، برنامه راه‌اندازی نمی‌شود. این شرط بخشی از لایسنس تجاری است.',
           style: TextStyle(fontSize: 13.5, height: 1.9),
         ),
         const SizedBox(height: 12),
@@ -238,7 +233,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
           value: consent,
           onChanged: (v) => setState(() => consent = v ?? false),
           title: const Text(
-            'می‌پذیرم که برنامه هنگام اتصال به اینترنت، گزارش فعال‌سازی را برای شرکت سازنده ارسال کند.',
+            'می‌پذیرم که برنامه گزارش فعال‌سازی را روی همین دستگاه ثبت کند.',
             style: TextStyle(fontSize: 13.5),
           ),
         ),
@@ -251,16 +246,10 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
   Widget _emailPage() {
     return ListView(
       children: [
-        const Text('ایمیل خریدار و حساب ارسال', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const Text('نام و ایمیل خریدار', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         _field(buyerName, 'نام خریدار', hint: 'مثال: علی محمدی'),
         _field(userEmail, 'ایمیل شما (باید واقعی و معتبر باشد)'),
-        const SizedBox(height: 14),
-        const Text('حساب ارسال ایمیل (پیش‌فرض جیمیل — رمز برنامه ۱۶ رقمی گوگل)',
-            style: TextStyle(fontSize: 12.5, color: Colors.blueGrey)),
-        const SizedBox(height: 6),
-        _field(smtpUser, 'ایمیل ارسال (Gmail)', hint: 'example@gmail.com'),
-        _field(smtpPass, 'رمز برنامه (App Password)', obscure: true),
         const SizedBox(height: 16),
         _navRow(),
       ],
@@ -278,7 +267,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
         _field(shopName, 'نام فروشگاه'),
         _field(shopAddress, 'آدرس'),
         _field(shopPhone, 'تلفن'),
-        _field(shopEmail, 'ایمیل فروشگاه (رسید سفارش‌ها به این آدرس ارسال می‌شود)'),
+        _field(shopEmail, 'ایمیل فروشگاه (در سربرگ رسیدها نمایش داده می‌شود)'),
         const SizedBox(height: 16),
         _navRow(),
       ],

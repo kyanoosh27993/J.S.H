@@ -1,11 +1,8 @@
 /// لایه دسترسی به داده — ریپازیتوری‌های برنامه
 library;
 
-import 'dart:async';
-
 import 'db/db.dart';
 import 'models.dart';
-import 'services/sheet_sync_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class SettingsRepo {
@@ -92,8 +89,6 @@ class TicketRepo {
   static Future<int> insert(Ticket t) async {
     final db = await Db.instance();
     final id = await db.insert('tickets', t.toMap());
-    // آینه شیت: سفارش تازه → افزودن ردیف (بدون انسداد جریان اصلی)
-    unawaited(SheetSyncService.onTicketChanged(t.code));
     return id;
   }
 
@@ -101,11 +96,9 @@ class TicketRepo {
     t.updatedAt = DateTime.now().toIso8601String();
     final db = await Db.instance();
     await db.update('tickets', t.toMap(), where: 'id = ?', whereArgs: [t.id]);
-    // آینه شیت: ویرایش سفارش → به‌روزرسانی ردیف متناظر
-    unawaited(SheetSyncService.onTicketChanged(t.code));
   }
 
-  /// حذف کامل سفارش با وابستگی‌ها — ردیف شیت هم حذف می‌شود
+  /// حذف کامل سفارش با وابستگی‌ها
   static Future<void> delete(int id) async {
     final db = await Db.instance();
     final t = await byId(id);
@@ -123,8 +116,6 @@ class TicketRepo {
     await db.delete('ticket_status_log',
         where: 'ticket_id = ?', whereArgs: [id]);
     await db.delete('tickets', where: 'id = ?', whereArgs: [id]);
-    // آینه شیت: حذف سفارش → حذف ردیف متناظر
-    unawaited(SheetSyncService.onTicketDeleted(t.code));
   }
 
   static Future<Ticket?> byId(int id) async {
@@ -272,61 +263,6 @@ class ReminderRepo {
         where: 'ticket_id = ? AND type = ?', whereArgs: [ticketId, type],
         limit: 1);
     return rows.isEmpty ? null : Reminder.fromMap(rows.first);
-  }
-}
-
-class EmailQueueRepo {
-  static Future<int> enqueue({
-    required String to,
-    required String subject,
-    required String body,
-    String attachmentPath = '',
-    String icsContent = '',
-  }) async {
-    final db = await Db.instance();
-    return db.insert('email_queue', {
-      'to_addr': to,
-      'subject': subject,
-      'body': body,
-      'attachment_path': attachmentPath,
-      'ics_content': icsContent,
-      'status': 'pending',
-      'attempts': 0,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  }
-
-  static Future<List<Map<String, Object?>>> pending({int limit = 10}) async {
-    final db = await Db.instance();
-    return db.query('email_queue',
-        where: "status = 'pending'",
-        orderBy: 'id ASC',
-        limit: limit);
-  }
-
-  static Future<void> markSent(int id) async {
-    final db = await Db.instance();
-    await db.update('email_queue', {
-      'status': 'sent',
-      'sent_at': DateTime.now().toIso8601String(),
-    }, where: 'id = ?', whereArgs: [id]);
-  }
-
-  static Future<void> markFailed(int id, String error) async {
-    final db = await Db.instance();
-    await db.rawUpdate(
-      'UPDATE email_queue SET attempts = attempts + 1, last_error = ?, '
-      "status = CASE WHEN attempts >= 20 THEN 'failed' ELSE 'pending' END "
-      'WHERE id = ?',
-      [error, id],
-    );
-  }
-
-  static Future<bool> hasPending() async {
-    final db = await Db.instance();
-    final rows = await db.rawQuery(
-        "SELECT COUNT(*) AS c FROM email_queue WHERE status = 'pending'");
-    return ((rows.first['c'] ?? 0) as int) > 0;
   }
 }
 

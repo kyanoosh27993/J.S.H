@@ -1,8 +1,7 @@
 /// سرویس گزارش نصب الزامی (N-03) — قلب قفل تجاری
-/// پس از نصب، گزارش کامل به ایمیل شرکت سازنده ارسال می‌شود:
+/// پس از نصب، گزارش کامل فعال‌سازی در یک فایل محلی روی دستگاه ثبت می‌شود:
 /// چه خریداری، چه تاریخی، چه دستگاهی با چه مشخصات سخت‌افزاری، نصب چندم و باقیمانده.
-/// آفلاین → صف و ارسال در اولین اینترنت؛ بعد از ۳۰ روز → پیام اتصال؛
-/// تا ارسال موفق، برنامه راه‌اندازی نمی‌شود.
+/// (نسخه 0.5.0: ارسال ایمیلی حذف شد — گزارش فقط محلی است)
 library;
 
 import 'dart:io';
@@ -10,19 +9,20 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
+import 'package:path_provider/path_provider.dart';
+
 import '../constants.dart';
 import '../repos.dart';
 import 'license_service.dart';
 
 enum GateState {
-  ok, // گزارش ارسال شده — اجرای عادی
+  ok, // گزارش ثبت شده — اجرای عادی
   waitingConsent, // ویزارد اول باید تکمیل شود
   queueing, // گزارش در صف است و اینترنت هنوز نیامده — بستن راه‌اندازی
   deadlinePassed, // بیش از ۳۰ روز بدون ارسال — پیام اتصال و ثبت ایمیل معتبر
 }
 
 class InstallReportService {
-  static const String reportTarget = VendorInfo.email;
 
   /// جمع‌آوری مشخصات سخت‌افزاری دستگاه
   static Future<String> collectHardware() async {
@@ -59,8 +59,8 @@ class InstallReportService {
     }
   }
 
-  /// ساخت متن گزارش و افزودن به صف ایمیل
-  static Future<void> enqueueReport({
+  /// ساخت متن گزارش و ذخیره محلی آن (نسخه 0.5.0 — بدون ایمیل)
+  static Future<String> writeReport({
     required String buyerName,
     required String userEmail,
     required int installCount,
@@ -76,20 +76,14 @@ class InstallReportService {
         'نصب باقیمانده مجاز: ${remaining < 0 ? 0 : remaining}\n\n'
         'مشخصات دستگاه و سخت‌افزار:\n$hardwareReport\n\n'
         'پروژه: ${AppInfo.projectId} — نسخه: ${AppInfo.version}\n'
-        'این گزارش به‌صورت خودکار توسط برنامه ارسال شده است (نیازمندی N-03).';
+        'این گزارش به‌صورت خودکار توسط برنامه ثبت شده است (نیازمندی N-03).';
 
-    await EmailQueueRepo.enqueue(
-      to: reportTarget,
-      subject: '[JSH Install Report] install #$installCount — $buyerName',
-      body: body,
-    );
-    await EmailQueueRepo.enqueue(
-      to: userEmail,
-      subject: 'JSH — رسید فعال‌سازی «داشبورد تعمیرات و خدمات»',
-      body: 'سلام $buyerName،\nفعال‌سازی برنامه شما ثبت شد.\n'
-          'شماره نصب: $installCount از ${AppInfo.maxInstalls} — نصب باقیمانده: ${remaining < 0 ? 0 : remaining}\n'
-          'پشتیبانی: ${VendorInfo.companyName} — ${VendorInfo.phoneDisplay} — ${VendorInfo.email}',
-    );
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}/install_reports');
+    await dir.create(recursive: true);
+    final f = File('${dir.path}/install_report_$installCount.txt');
+    await f.writeAsString(body, flush: true);
+    return f.path;
   }
 
   /// تشخیص وضعیت دروازه راه‌اندازی

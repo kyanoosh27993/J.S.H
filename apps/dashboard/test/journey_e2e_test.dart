@@ -16,7 +16,6 @@ import 'package:jsh_service_dashboard/core/repos.dart';
 import 'package:jsh_service_dashboard/core/services/assistant_service.dart';
 import 'package:jsh_service_dashboard/core/services/backup_service.dart';
 import 'package:jsh_service_dashboard/core/services/calendar_export_service.dart';
-import 'package:jsh_service_dashboard/core/services/email_service.dart';
 import 'package:jsh_service_dashboard/core/services/install_report_service.dart';
 import 'package:jsh_service_dashboard/core/services/pdf_service.dart';
 import 'package:jsh_service_dashboard/core/services/reminder_service.dart';
@@ -64,7 +63,7 @@ void main() {
         'email_queue', 'license_state', 'audit_log', 'settings']));
   });
 
-  test('۲) ویزارد فعال‌سازی: رضایت + صف گزارش نصب به شرکت سازنده (N-03)', () async {
+  test('۲) ویزارد فعال‌سازی: رضایت + ثبت محلی گزارش نصب (N-03)', () async {
     final state = await LicenseRepo.load();
     expect(state.installCount, 1); // نصب اول
     state.consentedAt = DateTime.now().toIso8601String();
@@ -73,7 +72,7 @@ void main() {
     await LicenseRepo.save(state);
     await LicenseIntegrity.write();
 
-    // وضعیت دروازه قبل از فعال‌سازی باید «انتظار رضایت» باشد — با رضایت جدید → صف ارسال
+    // وضعیت دروازه قبل از تکمیل باید «انتظار رضایت/ثبت» باشد
     final gate = InstallReportService.evaluateGate(
       consented: state.consentedAt.isNotEmpty,
       userEmail: state.userEmail,
@@ -81,20 +80,35 @@ void main() {
       firstRunAt: state.firstRunAt,
       pendingReportAttempts: 0,
     );
-    expect(gate, GateState.queueing); // تا ارسال موفق اجرا نمی‌شود
+    expect(gate, GateState.queueing); // تا ثبت گزارش اجرا نمی‌شود
 
-    await InstallReportService.enqueueReport(
+    // ثبت محلی گزارش فعال‌سازی (نسخه 0.5.0 — بدون ایمیل)
+    final path = await InstallReportService.writeReport(
       buyerName: state.buyerName,
       userEmail: state.userEmail,
       installCount: state.installCount,
       hardwareReport: 'تست سخت‌افزار',
     );
-    final pending = await EmailQueueRepo.pending();
-    expect(pending, isNotEmpty);
-    expect(pending.first['to_addr'], VendorInfo.email); // ایمیل شرکت سازنده
-    // SMTP تنظیم نشده → ارسال انجام نمی‌شود و در صف می‌ماند (سناریوی آفلاین)
-    final sent = await EmailService.drainQueue(SmtpConfig());
-    expect(sent, 0);
+    final reportFile = File(path);
+    expect(await reportFile.exists(), isTrue);
+    final content = await reportFile.readAsString();
+    expect(content, contains('فروشگاه تست'));
+    expect(content, contains('نصب باقیمانده مجاز'));
+
+    // علامت‌گذاری ثبت → دروازه راه‌اندازی باز می‌شود
+    state.reportStatus = 'sent';
+    state.reportSentAt = DateTime.now().toIso8601String();
+    state.reportSent = true;
+    await LicenseRepo.save(state);
+    await LicenseIntegrity.write();
+    final gate2 = InstallReportService.evaluateGate(
+      consented: state.consentedAt.isNotEmpty,
+      userEmail: state.userEmail,
+      reportSent: state.reportSent,
+      firstRunAt: state.firstRunAt,
+      pendingReportAttempts: 0,
+    );
+    expect(gate2, GateState.ok);
   });
 
   test('۳) پذیرش کامل: مشتری + دستگاه + سفارش + بیعانه + یادآوری', () async {

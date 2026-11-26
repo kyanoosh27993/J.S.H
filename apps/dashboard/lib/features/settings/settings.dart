@@ -1,4 +1,4 @@
-/// تنظیمات (N-01) — اطلاعات فروشگاه، حساب ایمیل، تنظیمات یادآوری + تست ارسال
+/// تنظیمات (N-01) — اطلاعات فروشگاه و تنظیمات یادآوری
 library;
 
 import 'package:flutter/material.dart';
@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
-import '../../core/services/email_service.dart';
-import '../../core/services/sheet_sync_service.dart';
 import '../../core/utils.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -22,17 +20,9 @@ class _SettingsPageState extends State<SettingsPage> {
   final shopAddress = TextEditingController();
   final shopPhone = TextEditingController();
   final shopEmail = TextEditingController();
-  final smtpUser = TextEditingController();
-  final smtpPass = TextEditingController();
-  final sheetEndpoint = TextEditingController();
   int leadDays = ReminderPrefs.defaultLeadDays;
   int reminderHour = ReminderPrefs.defaultHour;
   bool saved = false;
-  bool testing = false;
-  String testResult = '';
-  bool syncing = false;
-  String syncResult = '';
-  int pendingOps = 0;
 
   @override
   void initState() {
@@ -42,7 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in [shopName, shopAddress, shopPhone, shopEmail, smtpUser, smtpPass, sheetEndpoint]) {
+    for (final c in [shopName, shopAddress, shopPhone, shopEmail]) {
       c.dispose();
     }
     super.dispose();
@@ -56,14 +46,9 @@ class _SettingsPageState extends State<SettingsPage> {
       shopAddress.text = s['address'] ?? '';
       shopPhone.text = s['phone'] ?? '';
       shopEmail.text = s['email'] ?? '';
-      smtpUser.text = s['smtp_username'] ?? '';
-      smtpPass.text = s['smtp_password'] ?? '';
       leadDays = int.tryParse(s['reminder_lead_days'] ?? '') ?? ReminderPrefs.defaultLeadDays;
       reminderHour = int.tryParse(s['reminder_hour'] ?? '') ?? ReminderPrefs.defaultHour;
-      sheetEndpoint.text = s[SheetSyncConst.endpointSettingKey] ?? '';
     });
-    pendingOps = await SheetSyncService.pendingCount();
-    if (mounted) setState(() {});
   }
 
   Future<void> _save() async {
@@ -74,55 +59,12 @@ class _SettingsPageState extends State<SettingsPage> {
         'phone': shopPhone.text.trim(),
         'email': shopEmail.text.trim(),
       },
-      smtpCfg: SmtpConfig.gmail(smtpUser.text.trim(), smtpPass.text.trim()),
       leadDays: leadDays,
       hour: reminderHour,
     );
     setState(() => saved = true);
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) setState(() => saved = false);
-  }
-
-  Future<void> _testEmail() async {
-    setState(() {
-      testing = true;
-      testResult = '';
-    });
-    try {
-      await EmailQueueRepo.enqueue(
-        to: smtpUser.text.trim(),
-        subject: 'ایمیل آزمایشی — ${AppInfo.appName}',
-        body: 'اگر این ایمیل را دریافت کرده‌اید، تنظیمات ارسال درست است.',
-      );
-      final sent = await EmailService.drainQueue(AppSession.I.smtp);
-      setState(() => testResult = sent > 0
-          ? 'ارسال موفق بود — ایمیل آزمایشی دریافت شد.'
-          : AppSession.I.smtp.configured
-              ? 'ارسال انجام نشد — اینترنت را بررسی و «رمز برنامه» Gmail (App Password) را دوباره وارد کنید.'
-              : 'ایمیل و رمز برنامه هنوز ذخیره نشده‌اند — فیلدهای بالا را پر و ذخیره کنید.');
-    } catch (e) {
-      setState(() => testResult = 'خطا: $e');
-    } finally {
-      if (mounted) setState(() => testing = false);
-    }
-  }
-
-  /// ذخیره آدرس Apps Script و اعمال صف منتظر روی شیت (افزودن/ویرایش/حذف)
-  Future<void> _syncSheet() async {
-    setState(() {
-      syncing = true;
-      syncResult = '';
-    });
-    try {
-      await SheetSyncService.setEndpoint(sheetEndpoint.text.trim());
-      final r = await SheetSyncService.pushAll(includeDelivered: true);
-      pendingOps = await SheetSyncService.pendingCount();
-      syncResult = r.fa;
-    } catch (e) {
-      syncResult = 'خطا: $e';
-    } finally {
-      if (mounted) setState(() => syncing = false);
-    }
   }
 
   @override
@@ -141,45 +83,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _f(shopName, 'نام فروشگاه'),
             _f(shopAddress, 'آدرس'),
             _f(shopPhone, 'تلفن'),
-            _f(shopEmail, 'ایمیل فروشگاه (مقصد رسید سفارش‌ها)'),
-            const SizedBox(height: 16),
-            const Text('حساب ارسال ایمیل (جیمیل + رمز برنامه ۱۶ رقمی گوگل)',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            _f(smtpUser, 'ایمیل ارسال'),
-            _f(smtpPass, 'رمز برنامه', obscure: true),
-            const SizedBox(height: 6),
-            Row(children: [
-              FilledButton.tonalIcon(
-                onPressed: testing ? null : _testEmail,
-                icon: testing
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.send),
-                label: const Text('تست ارسال ایمیل'),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(testResult, style: const TextStyle(fontSize: 12.5))),
-            ]),
-            const SizedBox(height: 16),
-            const Text('همگام‌سازی Google Sheet (آدرس Web App از Apps Script)',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            _f(sheetEndpoint, 'آدرس endpoint (https://script.google.com/.../exec)'),
-            Text(pendingOps == 0
-                ? 'صف همگام‌سازی خالی است — همه عملیات اعمال شده‌اند.'
-                : '${toPersianDigits('$pendingOps')} عملیات در انتظار اعمال روی شیت (افزودن/ویرایش/حذف)'),
-            const SizedBox(height: 6),
-            Row(children: [
-              FilledButton.tonalIcon(
-                onPressed: syncing ? null : _syncSheet,
-                icon: syncing
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.cloud_sync),
-                label: const Text('ذخیره و اعمال در شیت'),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(syncResult, style: const TextStyle(fontSize: 12.5))),
-            ]),
+            _f(shopEmail, 'ایمیل فروشگاه (در سربرگ رسیدها نمایش داده می‌شود)'),
             const SizedBox(height: 16),
             const Text('تنظیمات یادآوری', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),

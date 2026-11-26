@@ -99,9 +99,7 @@ class _RootGateState extends State<_RootGate> {
   @override
   void initState() {
     super.initState();
-    // حلقه ایمیل: تلاش برای ارسال گزارش نصب و رسیدها
     if (!widget.session.locked) {
-      widget.session.startEmailLoop();
       _retry = Timer.periodic(const Duration(seconds: 5), (_) {
         if (mounted) setState(() => tick++);
       });
