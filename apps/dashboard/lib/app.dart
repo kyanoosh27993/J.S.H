@@ -1,4 +1,4 @@
-/// ریشه برنامه — دروازه راه‌اندازی: قفل لایسنس → ویزارد اول → بستن تا ارسال گزارش نصب
+/// ریشه برنامه — دروازه راه‌اندازی: قفل لایسنس → ویزارد اول → شل اصلی
 library;
 
 import 'dart:async';
@@ -19,7 +19,9 @@ import 'features/support/blocked.dart';
 
 class JshDashboardApp extends StatefulWidget {
   final AppSession session;
-  const JshDashboardApp({super.key, required this.session});
+  /// خطای راه‌اندازی اولیه (در صورت وجود) — به‌جای صفحه سیاه نمایش داده می‌شود
+  final Object? bootError;
+  const JshDashboardApp({super.key, required this.session, this.bootError});
 
   @override
   State<JshDashboardApp> createState() => _JshDashboardAppState();
@@ -122,6 +124,28 @@ class _RootGateState extends State<_RootGate> {
   @override
   Widget build(BuildContext context) {
     final s = widget.session;
+    // ۰) خطای راه‌اندازی اولیه — نمایش صریح به‌جای صفحه سیاه
+    if (widget.bootError != null) {
+      return Directionality(
+        textDirection: TextDirection.rtl,
+        child: Material(
+          child: BlockedPage(
+            title: 'خطا در راه‌اندازی برنامه',
+            message: 'برنامه نتوانست پایگاه‌داده محلی را باز کند:\n'
+                '${widget.bootError}\n\n'
+                'لطفاً از نصب کامل فایل نصبی مطمئن شوید و دوباره تلاش کنید. '
+                'اگر مشکل ادامه داشت با پشتیبانی تماس بگیرید.',
+            showRetry: true,
+            onRetry: () async {
+              try {
+                await s.init();
+              } catch (_) {}
+              if (mounted) setState(() {});
+            },
+          ),
+        ),
+      );
+    }
     // ۱) قفل لایسنس (F-09): نصب چهارم → فقط پیام پشتیبانی
     if (s.locked) {
       return BlockedPage(
@@ -137,22 +161,20 @@ class _RootGateState extends State<_RootGate> {
         return OnboardingWizard(session: s, onDone: () => setState(() {}));
       case GateState.queueing:
         return BlockedPage(
-          title: 'در انتظار ارسال گزارش فعال‌سازی به شرکت سازنده',
+          title: 'گزارش فعال‌سازی هنوز ثبت نشده است',
           message:
-              'گزارش نصب شما در صف ارسال است. سیستم را به اینترنت متصل کنید تا گزارش '
-              'به شرکت سازنده (${AppInfo.projectId}) ارسال شود.\n'
-              'تا ارسال موفق این گزارش، برنامه راه‌اندازی نمی‌شود. '
-              'برنامه هر لحظه به‌صورت خودکار تلاش می‌کند.',
+              'برای تکمیل فعال‌سازی، ویزارد راه‌اندازی اول را کامل کنید تا گزارش '
+              'فعال‌سازی روی همین دستگاه ثبت شود (${AppInfo.projectId}).\n'
+              'تا ثبت این گزارش، برنامه راه‌اندازی نمی‌شود.',
           showRetry: true,
           onRetry: () => setState(() {}),
         );
       case GateState.deadlinePassed:
         return BlockedPage(
-          title: 'اتصال اینترنت و ثبت ایمیل واقعی الزامی است',
+          title: 'گزارش فعال‌سازی هنوز ثبت نشده است',
           message:
-              'بیش از ۳۰ روز از نصب گذشته است و گزارش فعال‌سازی به شرکت سازنده ارسال نشده است.\n'
-              'لطفاً سیستم خود را به اینترنت متصل نمایید و ایمیل واقعی و خود را در تنظیمات ثبت کنید '
-              'تا ۱۰۰ درصد ایمیل معتبر اخذ شود و سپس گزارش برای شرکت سازنده ارسال شود.\n'
+              'بیش از ۳۰ روز از نصب گذشته است و گزارش فعال‌سازی هنوز روی این دستگاه ثبت نشده است.\n'
+              'ویزارد راه‌اندازی را کامل کنید؛ گزارش فقط به‌صورت محلی ذخیره می‌شود.\n'
               'تا انجام این کار، برنامه راه‌اندازی نخواهد شد.',
           showRetry: true,
           onRetry: () => setState(() {}),

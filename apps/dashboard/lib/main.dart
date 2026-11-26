@@ -8,15 +8,24 @@ import 'core/theme/theme_config.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final session = AppSession.I;
-  await session.init();
-  // شخصی‌سازی: بارگذاری پیکربندی تم و فونت‌های انتخابی کاربر از ویندوز
-  await ThemeConfig.load();
-  final cfg = ThemeConfig.notifier.value;
-  if (cfg.textFontPath.isNotEmpty) {
-    await FontService.loadDynamicFont(cfg.textFontFamily, cfg.textFontPath);
+  // مقاوم‌سازی: حتی اگر راه‌اندازی اولیه خطا داد، UI بالا می‌آید تا کاربر
+  // همیشه چیزی ببیند (نه صفحه سیاه) و پیام خطا نمایش داده شود
+  Object? bootError;
+  try {
+    await session.init();
+  } catch (e) {
+    bootError = e;
   }
-  if (cfg.numberFontPath.isNotEmpty) {
-    await FontService.loadDynamicFont(cfg.numberFontFamily, cfg.numberFontPath);
-  }
-  runApp(JshDashboardApp(session: session));
+  try {
+    // شخصی‌سازی: بارگذاری پیکربندی تم و فونت‌های انتخابی کاربر
+    await ThemeConfig.load();
+    final cfg = ThemeConfig.notifier.value;
+    if (cfg.textFontPath.isNotEmpty) {
+      await FontService.loadDynamicFont(cfg.textFontFamily, cfg.textFontPath);
+    }
+    if (cfg.numberFontPath.isNotEmpty) {
+      await FontService.loadDynamicFont(cfg.numberFontFamily, cfg.numberFontPath);
+    }
+  } catch (_) {}
+  runApp(JshDashboardApp(session: session, bootError: bootError));
 }

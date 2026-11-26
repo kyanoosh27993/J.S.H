@@ -1,7 +1,7 @@
 name: jsh_service_dashboard
 description: داشبورد تعمیرات و خدمات — سامانه مدیریت فروشگاه تعمیرات موبایل و لوازم الکتریکی (پروژه J.S.H)
 publish_to: "none"
-version: 0.1.0
+version: 0.5.0
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   # پایگاه‌داده محلی SQLite (ویندوز + اندروید)
   sqflite_common_ffi: ^2.3.3
+  # کتابخانه بومی sqlite3 برای اندروید/ویندوز — بدون آن FFI روی اندروید کرش می‌کند
+  sqlite3_flutter_libs: ^2.4.0
   path_provider: ^2.1.4
   path: ^1.9.0
   # ساخت PDF رسید با فونت فارسی
