@@ -12,6 +12,8 @@ import '../models.dart';
 import '../repos.dart';
 import '../utils.dart';
 import 'backup_service.dart';
+import 'daily_report_service.dart';
+import '../db/db.dart';
 import 'pdf_service.dart';
 import 'forecast_service.dart';
 import 'reminder_service.dart';
@@ -96,6 +98,17 @@ class AssistantService {
     // فاز ۲: پیش‌بینی فروش
     if (text.contains('پیش') && text.contains('بینی') || text.contains('پیش بینی')) {
       return _forecastSummary();
+    }
+
+    // فاز ۷ — بند ۹: گزارش روزانه، ابطالی‌ها، عملکرد کاربران
+    if (text.contains('گزارش') && (text.contains('امروز') || text.contains('دیروز') || text.contains('روز'))) {
+      return _dailyReportSummary(text.contains('دیروز'));
+    }
+    if (text.contains('ابطال')) {
+      return _cancelledSummary();
+    }
+    if (text.contains('عملکرد') || text.contains('کاربران') && text.contains('گزارش')) {
+      return _userPerformanceSummary();
     }
 
     // راهنما
@@ -322,6 +335,61 @@ class AssistantService {
       'پیش‌بینی صادقانه (میانگین متحرک ۳ ماه گذشته): '
       'درآمد تقریبی هر یک از ۳ ماه آینده حدود ${moneyToman(total ~/ 3)} تومان است. '
       'نمودار خطی داشبورد همین پیش‌بینی را با خط‌چین نشان می‌دهد.',
+    );
+  }
+  // ── فاز ۷ — بند ۹: پاسخ‌های هوشمند بر پایه داده جدید ──
+
+  static Future<AssistantReply> _dailyReportSummary(bool yesterday) async {
+    final day = DateTime.now().subtract(Duration(days: yesterday ? 1 : 0));
+    final events = await DailyReportService.eventsOf(day);
+    final byCat = <String, int>{};
+    for (final e in events) {
+      byCat[e.category] = (byCat[e.category] ?? 0) + 1;
+    }
+    final parts = [
+      for (final e in byCat.entries) '${e.key}: ${toPersianDigits('${e.value}')}',
+    ];
+    return AssistantReply(
+      'گزارش ${yesterday ? 'دیروز' : 'امروز'} — ${toPersianDigits('${events.length}')} رخداد:\n'
+      '${parts.isEmpty ? 'رخدادی ثبت نشده است.' : parts.join('، ')}\n'
+      'برای دیدن جزئیات و خروجی فایل: صفحه «یادآوری‌ها → گزارش روزانه».',
+    );
+  }
+
+  static Future<AssistantReply> _cancelledSummary() async {
+    final db = await Db.instance();
+    final rows = await db.query('invoices',
+        where: 'status = ?', whereArgs: ['cancelled'], orderBy: 'id DESC', limit: 10);
+    if (rows.isEmpty) {
+      return const AssistantReply('هیچ سند ابطالی ثبت نشده است.');
+    }
+    final lines = [
+      for (final r in rows)
+        '${toPersianDigits((r['number'] ?? '') as String)} — '
+            '${DailyReportService.moneyFa(((r['total'] ?? 0) as int))} تومان'
+            '${((r['cancel_reason'] ?? '') as String).isEmpty ? '' : ' — دلیل: ${(r['cancel_reason'] ?? '') as String}'}',
+    ];
+    return AssistantReply(
+      '${toPersianDigits('${rows.length}')} سند ابطالی اخیر:\n${lines.join('\n')}\n'
+      '(لیست کامل: صفحه «فاکتورها → ابطال‌شده‌ها»)',
+    );
+  }
+
+  static Future<AssistantReply> _userPerformanceSummary() async {
+    final now = DateTime.now();
+    final rows = await TicketRepo.activityReport(
+        now.subtract(const Duration(days: 30)).toIso8601String(),
+        now.add(const Duration(days: 1)).toIso8601String());
+    final lines = [
+      for (final r in rows)
+        '${((r['display_name'] ?? '') as String).isEmpty ? r['username'] : r['display_name']}: '
+            '${toPersianDigits('${r['intakes']}')} پذیرش، '
+            '${toPersianDigits('${r['delivered']}')} تحویل، '
+            'وصولی ${DailyReportService.moneyFa(((r['collected'] ?? 0) as int))} تومان '
+            '(${toPersianDigits((((r['share'] ?? 0.0) as num).toDouble().toStringAsFixed(0)))}٪ سهم)',
+    ];
+    return AssistantReply(
+      'عملکرد کاربران در ۳۰ روز اخیر:\n${lines.join('\n')}',
     );
   }
 }

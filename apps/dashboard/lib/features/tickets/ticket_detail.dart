@@ -1,12 +1,15 @@
 /// جزئیات سفارش — قطعات/خدمات، پرداخت‌ها، فاکتور، تحویل با اقرارنامه
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
+import '../../core/services/attach_service.dart';
 import '../../core/services/delivery_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
@@ -26,6 +29,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   List<TicketItem> items = [];
   List<Payment> payments = [];
   List<Map<String, Object?>> log = [];
+  Future<List<Map<String, Object?>>>? attachments;
 
   final itemDesc = TextEditingController();
   final itemQty = TextEditingController(text: '1');
@@ -63,6 +67,100 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       items = i;
       payments = p;
       log = l;
+      attachments = AttachService.list(widget.ticketId);
+    });
+  }
+
+  // ── فاز ۸ (بند ۷ جدید) — اتچ عکس سلامت کالا ──
+  Future<void> _attachFromFile() async {
+    final err = await AttachService.attachFromFile(widget.ticketId);
+    if (!mounted) return;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    setState(() {
+      attachments = AttachService.list(widget.ticketId);
+    });
+  }
+
+  /// دریافت عکس از گوشی روی وای‌فای — سرور محلی موقت
+  Future<void> _wifiReceive() async {
+    final server = WifiPhotoServer();
+    final url = await server.start(widget.ticketId);
+    if (!mounted) return;
+    var received0 = 0;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('دریافت عکس از گوشی (وای‌فای)'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '۱) گوشی را به همان وای‌فای رایانه وصل کنید.\n'
+                '۲) در مرورگر گوشی آدرس زیر را باز کنید:\n',
+                style: TextStyle(fontSize: 12.5, height: 1.7),
+              ),
+              SelectableText(url,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue)),
+              const SizedBox(height: 6),
+              const Text(
+                '۳) عکس بگیرید یا از گالری انتخاب و ارسال کنید — عکس مستقیم به همین سفارش اتچ می‌شود. بدون نیاز به اینترنت.',
+                style: TextStyle(fontSize: 12, height: 1.7),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('پایان و بستن سرور')),
+          ],
+        ),
+      ),
+    );
+    received0 = server.received;
+    await server.stop();
+    if (!mounted) return;
+    if (received0 > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            '${toPersianDigits('$received0')} عکس از گوشی دریافت و اتچ شد'),
+      ));
+    }
+    setState(() {
+      attachments = AttachService.list(widget.ticketId);
+    });
+  }
+
+  Future<void> _deleteAttach(Map<String, Object?> a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف عکس'),
+        content: const Text('این عکس از سفارش حذف شود؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('انصراف')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حذف')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await AttachService.delete((a['id'] ?? 0) as int);
+    if (!mounted) return;
+    setState(() {
+      attachments = AttachService.list(widget.ticketId);
     });
   }
 
@@ -275,6 +373,65 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                   ]),
                 ),
               ),
+              const Divider(height: 24),
+              // فاز ۸ (بند ۷ جدید) — عکس‌های سلامت کالا
+              Row(
+                children: [
+                  Text('عکس‌های سلامت کالا',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.add_photo_alternate, size: 18),
+                    label: const Text('افزودن عکس', style: TextStyle(fontSize: 12)),
+                    onPressed: _attachFromFile,
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    icon: const Icon(Icons.smartphone, size: 18),
+                    label: const Text('از گوشی (وای‌فای)', style: TextStyle(fontSize: 12)),
+                    onPressed: _wifiReceive,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              FutureBuilder<List<Map<String, Object?>>>(
+                future: attachments,
+                builder: (_, snap) {
+                  final list = snap.data ?? [];
+                  if (list.isEmpty) {
+                    return const Text('عکسی اتچ نشده است',
+                        style: TextStyle(fontSize: 12, color: Colors.blueGrey));
+                  }
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final a in list)
+                        GestureDetector(
+                          onTap: () => _deleteAttach(a),
+                          child: Tooltip(
+                            message: 'حذف — ${(a['created_at'] ?? '') as String}',
+                            child: Container(
+                              width: 84,
+                              height: 84,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Image.file(
+                                File((a['path'] ?? '') as String),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.broken_image, size: 26),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 6),
               const Divider(height: 24),
               Text('تاریخچه مراحل', style: Theme.of(context).textTheme.titleMedium),
               ...log.map((e) {

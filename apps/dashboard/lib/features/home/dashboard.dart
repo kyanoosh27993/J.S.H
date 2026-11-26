@@ -378,7 +378,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       fontWeight: FontWeight.bold,
                       color: cfg.palette.textSecondary)),
               const SizedBox(height: 8),
-              SizedBox(width: double.infinity, child: child),
+              SizedBox(width: double.infinity, child: RepaintBoundary(child: child)),
             ],
           ),
         ),

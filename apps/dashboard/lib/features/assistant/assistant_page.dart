@@ -154,12 +154,16 @@ class _AssistantPageState extends State<AssistantPage> {
         decoration: BoxDecoration(
           color: isUser
               ? Theme.of(context).colorScheme.primaryContainer
-              : Colors.grey.shade100,
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
-          isUser ? m.text : m.text,
-          style: const TextStyle(fontSize: 13, height: 1.8),
+          m.text,
+          style: TextStyle(
+              fontSize: 13,
+              height: 1.8,
+              // بند ۹ — خوانایی در تم تاریک: رنگ متن هماهنگ تم
+              color: Theme.of(context).colorScheme.onSurface),
         ),
       ),
     );

@@ -441,7 +441,7 @@ class _LinePainter extends CustomPainter {
         final text =
             '${points[best].label}: ${money(points[best].value.round())}';
         _tooltip(canvas, text, pt - const Offset(0, 22), textPrimary,
-            numberFont);
+            numberFont, size.width);
       }
     }
   }
@@ -471,7 +471,8 @@ class _LinePainter extends CustomPainter {
     tp.paint(c, Offset(dx, at.dy));
   }
 
-  void _tooltip(Canvas c, String text, Offset at, Color fg, String numFont) {
+  void _tooltip(Canvas c, String text, Offset at, Color fg, String numFont,
+      [double maxW = 400]) {
     final tp = TextPainter(
       text: TextSpan(
           text: text,
@@ -483,8 +484,10 @@ class _LinePainter extends CustomPainter {
       textDirection: TextDirection.rtl,
     )..layout();
     const pad = 6.0;
-    final rect = Rect.fromLTWH(at.dx - tp.width / 2 - pad, at.dy - pad,
-        tp.width + pad * 2, tp.height + pad * 2);
+    // بند ۸ — کادر تولتیپ داخل مرز نمودار بماند (رفع کادر مستطیل بیرون‌زده در RTL)
+    final left = (at.dx - tp.width / 2 - pad).clamp(2.0, maxW - tp.width - pad * 2 - 2.0);
+    final rect = Rect.fromLTWH(left, at.dy - pad, tp.width + pad * 2,
+        tp.height + pad * 2);
     c.drawRRect(
         RRect.fromRectAndRadius(rect, const Radius.circular(7)),
         Paint()..color = Colors.black.withValues(alpha: 0.72));
