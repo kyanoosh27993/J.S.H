@@ -1,0 +1,29 @@
+name: jsh_license_gen
+description: برنامه جانبی تولید کد فعال‌سازی J.S.H — صرفاً برای سازنده (بند ۲ درخواست صاحب پروژه)
+publish_to: "none"
+version: 1.0.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # موتور کد فعال‌سازی — همان هسته برنامه اصلی
+  activation_core:
+    path: ../../packages/activation_core
+  # بانک گزارش کدها (محلی)
+  sqflite_common_ffi: ^2.3.3
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  # تقویم شمسی
+  shamsi_date: ^1.0.4
+
+dev_dependencies:
+  path_provider_platform_interface: ^2.1.0
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

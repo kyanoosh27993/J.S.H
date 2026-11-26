@@ -12,7 +12,6 @@ import 'package:jsh_service_dashboard/core/models.dart';
 import 'package:jsh_service_dashboard/core/repos.dart';
 import 'package:jsh_service_dashboard/core/services/calendar_export_service.dart';
 import 'package:jsh_service_dashboard/core/services/reminder_service.dart';
-import 'package:jsh_service_dashboard/core/warranty.dart';
 
 class _FakePP extends PathProviderPlatform {
   final String base;

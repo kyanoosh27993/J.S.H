@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/theme_config.dart';
+import '../../core/services/activation_service.dart';
 import '../../core/services/app_session.dart';
 import '../../core/utils.dart';
 import '../../shared/widgets/app_text.dart';
@@ -34,7 +35,10 @@ class _NavItem {
 
 class MainShell extends StatefulWidget {
   final AppSession session;
-  const MainShell({super.key, required this.session});
+
+  /// روزهای باقیمانده اعتبار کد فعال‌سازی — اگر بین ۱ تا ۷ باشد، هشدار هر ورود نمایش داده می‌شود (بند ۱۸)
+  final int? expiryNoticeDays;
+  const MainShell({super.key, required this.session, this.expiryNoticeDays});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -45,6 +49,42 @@ class _MainShellState extends State<MainShell> {
   bool railPinned = false;
   bool hoverOpen = false;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showExpiryNoticeIfAny();
+    });
+  }
+
+  void _showExpiryNoticeIfAny() {
+    final d = widget.expiryNoticeDays;
+    if (d == null || !mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          icon: Icon(Icons.alarm_on_rounded,
+              color: d <= 3 ? Colors.red : Colors.orange, size: 34),
+          title: const Text('یادآوری اعتبار برنامه',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          content: Text(
+            ActivationService.expiryWarningMessage(d),
+            style: const TextStyle(fontSize: 13.5, height: 1.9),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('متوجه شدم'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   static const _items = <_NavItem>[
     _NavItem(Icons.dashboard_rounded, 'خانه',
@@ -449,7 +489,7 @@ class _MainShellState extends State<MainShell> {
       case 11:
         return const ThemeSettingsPage();
       case 12:
-        return const SupportPage();
+        return SupportPage(session: widget.session);
       default:
         return const SizedBox();
     }

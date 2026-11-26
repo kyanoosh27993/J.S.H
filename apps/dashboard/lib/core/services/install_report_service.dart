@@ -12,7 +12,6 @@ import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 
 import '../constants.dart';
-import '../repos.dart';
 import 'license_service.dart';
 
 enum GateState {

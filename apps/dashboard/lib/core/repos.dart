@@ -287,7 +287,9 @@ class LicenseRepo {
 
   static Future<void> save(LicenseState s) async {
     final db = await Db.instance();
-    await db.update('license_state', {
+    // UPSERT — رکورد ممکن است در نصب تازه هنوز ساخته نشده باشد
+    await db.insert('license_state', {
+      'id': 1,
       'install_count': s.installCount,
       'fingerprint': s.fingerprint,
       'consented_at': s.consentedAt,
@@ -298,6 +300,10 @@ class LicenseRepo {
       'last_report_error': s.lastReportError,
       'hardware_report': s.hardwareReport,
       'first_run_at': s.firstRunAt,
-    }, where: 'id = 1');
+      'activation_code': s.activationCode,
+      'activation_expiry': s.activationExpiry,
+      'activated_at': s.activatedAt,
+      'last_seen_date': s.lastSeenDate,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 }

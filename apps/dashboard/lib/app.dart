@@ -8,10 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:local_notifier/local_notifier.dart';
 
 import 'core/constants.dart';
+import 'core/services/activation_service.dart';
 import 'core/services/app_session.dart';
 import 'core/services/backup_service.dart';
 import 'core/services/install_report_service.dart';
 import 'core/services/reminder_service.dart';
+import 'features/activation/activation_page.dart';
 import 'features/onboarding/onboarding.dart';
 import 'features/shell/shell.dart';
 import 'core/theme/theme_config.dart';
@@ -123,6 +125,15 @@ class _RootGateState extends State<_RootGate> {
     super.dispose();
   }
 
+  /// روزهای باقیمانده اعتبار برای هشدار ۷ روز مانده (بند ۱۸) — null یعنی هشدار لازم نیست
+  int? _expiryNoticeDays() {
+    final s = widget.session;
+    if (s.activationStatus != ActivationStatus.active) return null;
+    final remaining = ActivationService.remainingDays(s.license);
+    if (remaining <= 0 || remaining > 7) return null;
+    return remaining;
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.session;
@@ -182,7 +193,11 @@ class _RootGateState extends State<_RootGate> {
           onRetry: () => setState(() {}),
         );
       case GateState.ok:
-        return MainShell(session: s);
+        // فاز ۱ — بدون کد فعال‌سازی برنامه اجرا نمی‌شود (بند ۴)
+        if (s.activationStatus == ActivationStatus.notActivated) {
+          return ActivationPage(session: s, onActivated: () => setState(() {}));
+        }
+        return MainShell(session: s, expiryNoticeDays: _expiryNoticeDays());
     }
   }
 }

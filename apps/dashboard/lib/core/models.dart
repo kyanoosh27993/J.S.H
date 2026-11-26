@@ -310,7 +310,7 @@ class Reminder {
       };
 }
 
-/// وضعیت لایسنس و گزارش نصب (F-09 + N-03)
+/// وضعیت لایسنس و گزارش نصب (F-09 + N-03 + فعال‌سازی کد — فاز ۱ نقشه راه نسخه ۲)
 class LicenseState {
   int installCount;
   String fingerprint;
@@ -323,6 +323,12 @@ class LicenseState {
   String lastReportError;
   String hardwareReport;
 
+  /// فعال‌سازی با کد (فاز ۱):
+  String activationCode;
+  String activationExpiry; // ISO تاریخ پایان اعتبار
+  String activatedAt; // ISO لحظه فعال‌سازی
+  String lastSeenDate; // ISO بیشینه تاریخ دیده‌شده — ضد عقب‌بردن تاریخ
+
   LicenseState({
     this.installCount = 1,
     this.fingerprint = '',
@@ -334,9 +340,14 @@ class LicenseState {
     this.reportSentAt,
     this.lastReportError = '',
     this.hardwareReport = '',
+    this.activationCode = '',
+    this.activationExpiry = '',
+    this.activatedAt = '',
+    this.lastSeenDate = '',
   });
 
   bool get reportSent => reportStatus == 'sent';
+  bool get activated => activationCode.isNotEmpty && activationExpiry.isNotEmpty;
 
   factory LicenseState.fromMap(Map<String, Object?> m) => LicenseState(
         installCount: (m['install_count'] ?? 1) as int,
@@ -349,5 +360,9 @@ class LicenseState {
         reportSentAt: m['report_sent_at'] as String?,
         lastReportError: (m['last_report_error'] ?? '') as String,
         hardwareReport: (m['hardware_report'] ?? '') as String,
+        activationCode: (m['activation_code'] ?? '') as String,
+        activationExpiry: (m['activation_expiry'] ?? '') as String,
+        activatedAt: (m['activated_at'] ?? '') as String,
+        lastSeenDate: (m['last_seen_date'] ?? '') as String,
       );
 }

@@ -9,6 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # موتور کد فعال‌سازی — مشترک با برنامه جانبی تولید کد (فاز ۱)
+  activation_core:
+    path: ../../packages/activation_core
+  # شناسه دستگاه اندروید (ANDROID_ID) برای فعال‌سازی — فاز ۱
+  android_id: ^0.4.0
+  device_info_plus: ^10.1.2
   # پایگاه‌داده محلی SQLite (ویندوز + اندروید)
   sqflite_common_ffi: ^2.3.3
   # کتابخانه بومی sqlite3 برای اندروید/ویندوز — بدون آن FFI روی اندروید کرش می‌کند

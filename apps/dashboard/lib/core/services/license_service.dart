@@ -5,7 +5,9 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:android_id/android_id.dart';
 import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import '../constants.dart';
 import '../utils.dart';
@@ -19,6 +21,8 @@ class LicenseLockedException implements Exception {
 
 class LicenseService {
   /// اثر انگشت سخت‌افزار: ترکیب شناسه‌های ثابت سیستم + هش SHA-256
+  /// ویندوز: MachineGuid + ProcessorId پردازنده + شماره سریال مادربورد (بند ۲)
+  /// اندروید: ANDROID_ID + اثر انگشت بیلد دستگاه
   static Future<String> fingerprint() async {
     final parts = <String>[];
     if (Platform.isWindows) {
@@ -28,6 +32,16 @@ class LicenseService {
       parts.add(await _winCommand(
           'wmic', ['baseboard', 'get', 'SerialNumber']));
       parts.add(Platform.localHostname);
+    } else if (Platform.isAndroid) {
+      try {
+        // ANDROID_ID — شناسه پایدار دستگاه (تغییر با factory reset — طبیعی است)
+        final aid = await const AndroidId().getId();
+        parts.add(aid ?? '');
+        final info = await DeviceInfoPlugin().androidInfo;
+        parts.add(info.fingerprint);
+        parts.add(info.board);
+      } catch (_) {}
+      parts.add(Platform.operatingSystemVersion);
     } else {
       parts.add(await _readIfExists('/etc/machine-id'));
       parts.add(Platform.localHostname);

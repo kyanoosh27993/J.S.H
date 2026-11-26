@@ -33,6 +33,27 @@ jobs:
       # تست‌های golden (مقایسه پیکسلی) وابسته به رندر ماشین مرجع‌اند و فقط آنجا اجرا می‌شوند
       - run: flutter test --exclude-tags=golden
 
+  license-core-test:
+    name: تست موتور فعال‌سازی + مولد کد
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: تست بسته هسته فعال‌سازی
+        working-directory: packages/activation_core
+        run: |
+          flutter pub get
+          flutter test
+      - name: تست برنامه جانبی مولد
+        working-directory: apps/license_gen
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings || true
+          flutter test
+
   build-windows:
     name: بیلد Windows exe (فاز ۳)
     if: startsWith(github.ref, 'refs/tags/v')
@@ -57,6 +78,32 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: jsh-windows-x64.zip
+          fail_on_unmatched_files: true
+
+  build-license-gen:
+    name: بیلد مولد کد فعال‌سازی — Windows exe (فاز ۱ نسخه ۲)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/license_gen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: بسته‌بندی exe
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+            -DestinationPath $env:GITHUB_WORKSPACE\jsh-license-gen-windows-x64.zip -Force
+      - name: انتشار در Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: jsh-license-gen-windows-x64.zip
           fail_on_unmatched_files: true
 
   build-android:

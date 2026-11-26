@@ -139,7 +139,11 @@ CREATE TABLE IF NOT EXISTS license_state (
   report_status TEXT NOT NULL DEFAULT 'pending',
   report_sent_at TEXT,
   last_report_error TEXT DEFAULT '',
-  hardware_report TEXT DEFAULT ''
+  hardware_report TEXT DEFAULT '',
+  activation_code TEXT DEFAULT '',
+  activation_expiry TEXT DEFAULT '',
+  activated_at TEXT DEFAULT '',
+  last_seen_date TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS warranty_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,8 +181,35 @@ class Db {
     );
     await db.execute('PRAGMA foreign_keys = ON');
     await db.execute(kSchema);
+    await _migrate(db);
     _db = db;
     return db;
+  }
+
+  /// مهاجرت افزایشی — افزودن ستون‌های جدید به نصب‌های قدیمی (ایده‌مپوتنت)
+  static Future<void> _migrate(Database db) async {
+    final cols = <String, List<String>>{
+      'license_state': [
+        'activation_code',
+        'activation_expiry',
+        'activated_at',
+        'last_seen_date',
+      ],
+    };
+    for (final e in cols.entries) {
+      try {
+        final rows = await db.rawQuery('PRAGMA table_info(${e.key})');
+        final existing = rows.map((r) => r['name'] as String).toSet();
+        for (final c in e.value) {
+          if (!existing.contains(c)) {
+            await db.execute(
+                'ALTER TABLE ${e.key} ADD COLUMN $c TEXT DEFAULT \'\'');
+          }
+        }
+      } catch (_) {
+        // جدول تازه ساخته شده و ستون‌ها در اسکیما هستند
+      }
+    }
   }
 
   static Future<String> dbPath() async {

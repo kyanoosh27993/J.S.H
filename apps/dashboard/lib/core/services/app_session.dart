@@ -1,9 +1,10 @@
-/// کنترلر نشست برنامه — هماهنگی لایسنس، گزارش نصب و یادآوری
+/// کنترلر نشست برنامه — هماهنگی لایسنس، فعال‌سازی، گزارش نصب و یادآوری
 library;
 
 import '../constants.dart';
 import '../models.dart';
 import '../repos.dart';
+import 'activation_service.dart';
 import 'install_report_service.dart';
 import 'license_service.dart';
 import 'backup_service.dart';
@@ -17,6 +18,9 @@ class AppSession {
   LicenseState license = LicenseState();
   bool locked = false;
   String lockReason = '';
+
+  /// وضعیت فعال‌سازی — پس از هر init تازه می‌شود (فاز ۱)
+  ActivationStatus activationStatus = ActivationStatus.notActivated;
 
   Future<void> init() async {
     // ۱) لایسنس و شمارنده نصب
@@ -52,6 +56,35 @@ class AppSession {
     }
     await LicenseIntegrity.write();
 
+    // ۱-پ) نگهبان تاریخ سیستم — ضد عقب‌بردن تاریخ (بند ۳ درخواست صاحب پروژه)
+    try {
+      await ActivationService.clockGuard(state);
+      await LicenseRepo.save(state);
+    } on ClockTamperedException {
+      locked = true;
+      lockReason = 'تغییر تاریخ سیستم تشخیص داده شد.\n'
+          'برنامه بر پایه تاریخ سیستم کار می‌کند و عقب‌بردن آن، اعتبار کد فعال‌سازی را '
+          'طولانی نمی‌کند و اجازه اجرا نمی‌دهد.\n'
+          'لطفاً تاریخ و ساعت رایانه را روی زمان واقعی تنظیم کنید.\n'
+          'اگر تاریخ سیستم درست است و این پیام دیده می‌شود، با پشتیبانی تماس بگیرید:\n'
+          '${VendorInfo.companyName} — ${VendorInfo.phoneDisplay} — ${VendorInfo.email}';
+      return;
+    }
+
+    // ۱-ت) وضعیت فعال‌سازی با کد (فاز ۱)
+    try {
+      activationStatus = await ActivationService.statusOf(state);
+    } catch (_) {
+      activationStatus = state.activated
+          ? ActivationStatus.expired
+          : ActivationStatus.notActivated;
+    }
+    if (activationStatus == ActivationStatus.expired) {
+      locked = true;
+      lockReason = ActivationService.expiryLockMessage();
+      return;
+    }
+
     // ۲) قفل نصب چهارم (F-09)
     try {
       await LicenseService.guard(count);
@@ -83,6 +116,16 @@ class AppSession {
     await LicenseRepo.save(license);
     await LicenseIntegrity.write();
     await SettingsRepo.set('install_report_sent', '1');
+  }
+
+  /// فعال‌سازی با کد — از صفحه فعال‌سازی فراخوانده می‌شود
+  /// خروجی: پیام خطا یا null در صورت موفقیت
+  Future<String?> activateWithCode(String code) async {
+    final err = await ActivationService.activate(license, code);
+    if (err == null) {
+      activationStatus = ActivationStatus.active;
+    }
+    return err;
   }
 
   /// ذخیره اطلاعات فروشگاه + تنظیمات یادآوری از ویزارد/تنظیمات
