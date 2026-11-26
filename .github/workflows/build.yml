@@ -1,0 +1,82 @@
+name: J.S.H Build
+
+# فاز ۲ و ۳ نقشه راه:
+#  • هر پوش به main → تست کامل flutter test (فاز ۲)
+#  • هر تگ v* → بیلد Windows exe + Android APK و انتشار Release (فاز ۳)
+#  • اجرای دستی هم ممکن است (workflow_dispatch)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  flutter-test:
+    name: تست‌های Flutter (فاز ۲)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
+      - run: flutter test
+
+  build-windows:
+    name: بیلد Windows exe (فاز ۳)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: بسته‌بندی exe
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+            -DestinationPath $env:GITHUB_WORKSPACE\jsh-windows-x64.zip -Force
+      - name: انتشار در Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: jsh-windows-x64.zip
+          fail_on_unmatched_files: true
+
+  build-android:
+    name: بیلد Android APK (فاز ۳)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - name: تغییر نام APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/jsh-android.apk"
+      - name: انتشار در Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: jsh-android.apk
+          fail_on_unmatched_files: true
