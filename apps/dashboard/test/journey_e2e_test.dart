@@ -98,7 +98,6 @@ void main() {
     // علامت‌گذاری ثبت → دروازه راه‌اندازی باز می‌شود
     state.reportStatus = 'sent';
     state.reportSentAt = DateTime.now().toIso8601String();
-    state.reportSent = true;
     await LicenseRepo.save(state);
     await LicenseIntegrity.write();
     final gate2 = InstallReportService.evaluateGate(

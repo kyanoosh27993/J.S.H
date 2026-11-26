@@ -80,7 +80,6 @@ class AppSession {
   Future<void> markReportSent() async {
     license.reportStatus = 'sent';
     license.reportSentAt = DateTime.now().toIso8601String();
-    license.reportSent = true;
     await LicenseRepo.save(license);
     await LicenseIntegrity.write();
     await SettingsRepo.set('install_report_sent', '1');
