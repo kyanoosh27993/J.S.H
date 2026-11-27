@@ -158,9 +158,10 @@ class TicketRepo {
 
   static Future<String> nextCode() async {
     final db = await Db.instance();
-    final now = DateTime.now();
+    // بند ۱۲ نسخه ۳ — شماره رسید بر اساس تاریخ شمسی (مانند شماره فاکتور)
+    final jd = j.Jalali.fromDateTime(DateTime.now());
     final prefix =
-        'RCP-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-';
+        'RCP-${jd.year}${jd.month.toString().padLeft(2, '0')}${jd.day.toString().padLeft(2, '0')}-';
     final rows = await db.rawQuery(
         "SELECT COUNT(*) AS c FROM tickets WHERE code LIKE ?", ['$prefix%']);
     final n = ((rows.first['c'] ?? 0) as int) + 1;

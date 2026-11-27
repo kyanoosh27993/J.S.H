@@ -661,7 +661,8 @@ class _BoardPageState extends State<BoardPage> {
                               'کاربر: ${userNames[uid] ?? uid}',
                             if (reason.isNotEmpty) 'دلیل: $reason',
                             if (note.isNotEmpty) note,
-                            (e['created_at'] ?? '') as String,
+                            // بند ۱۸ نسخه ۳ — تاریخ شمسی در تاریخچه وضعیت‌ها
+                            _shamsiLogDate(e['created_at']),
                           ].join(' — '),
                           style: const TextStyle(fontSize: 11),
                         ),
@@ -684,4 +685,10 @@ class _StatusResult {
   final String reason;
   final int? assignTo;
   const _StatusResult({required this.reason, this.assignTo});
+}
+
+/// تاریخ ثبت لاگ وضعیت به شمسی — بند ۱۸ نسخه ۳
+String _shamsiLogDate(Object? iso) {
+  final dt = DateTime.tryParse('$iso');
+  return dt == null ? '$iso' : shamsiDateTime(dt);
 }

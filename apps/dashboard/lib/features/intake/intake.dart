@@ -105,8 +105,11 @@ class _IntakePageState extends State<IntakePage> {
     super.dispose();
   }
 
-  int get _estimateVal => int.tryParse(toEnglishDigits(estimate.text)) ?? 0;
-  int get _depositVal => int.tryParse(toEnglishDigits(deposit.text)) ?? 0;
+  // مبلغ با سه‌رقمی جداکننده نمایش داده می‌شود — کاما قبل از پارس حذف شود (بند ۱۹)
+  int get _estimateVal =>
+      int.tryParse(toEnglishDigits(estimate.text).replaceAll(',', '')) ?? 0;
+  int get _depositVal =>
+      int.tryParse(toEnglishDigits(deposit.text).replaceAll(',', '')) ?? 0;
   int get _preInvoiceRemaining =>
       _estimateVal - _depositVal > 0 ? _estimateVal - _depositVal : 0;
 
@@ -483,6 +486,7 @@ class _IntakePageState extends State<IntakePage> {
                     label: 'قیمت احتمالی (تومان)',
                     controller: estimate,
                     hint: '0',
+                    groupThousands: true,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -491,6 +495,7 @@ class _IntakePageState extends State<IntakePage> {
                     label: 'بیعانه دریافتی (تومان)',
                     controller: deposit,
                     hint: '0',
+                    groupThousands: true,
                   ),
                 ),
               ],

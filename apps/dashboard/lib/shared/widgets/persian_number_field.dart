@@ -14,6 +14,8 @@ class PersianNumberField extends StatefulWidget {
   final TextEditingController controller;
   final String? hint;
   final bool allowDecimal;
+  /// جداسازی سه‌رقمی حین تایپ (بند ۱۹ نسخه ۳) — فقط برای فیلدهای مبلغ فعال شود
+  final bool groupThousands;
   final String? Function(String?)? validator;
   final void Function(String)? onChanged;
   final TextInputType? keyboardType;
@@ -24,6 +26,7 @@ class PersianNumberField extends StatefulWidget {
     required this.controller,
     this.hint,
     this.allowDecimal = false,
+    this.groupThousands = false,
     this.validator,
     this.onChanged,
     this.keyboardType,
@@ -42,7 +45,10 @@ class _PersianNumberFieldState extends State<PersianNumberField> {
     final v = widget.controller.text;
     if (v.isNotEmpty) {
       scheduleMicrotask(() {
-        widget.controller.text = toPersianDigits(toEnglishDigits(v));
+        final en = toEnglishDigits(v).replaceAll(',', '');
+        widget.controller.text = widget.groupThousands
+            ? toPersianDigits(_group(en))
+            : toPersianDigits(en);
       });
     }
     widget.controller.addListener(_onCtrl);
@@ -52,8 +58,15 @@ class _PersianNumberFieldState extends State<PersianNumberField> {
     // تعویق میکروتسکی — تغییر مقدار کنترلر حین build/نوتیفیکیشن ممنوع است
     scheduleMicrotask(() {
       final v = widget.controller.text;
-      final en = toEnglishDigits(v);
-      final fa = toPersianDigits(en);
+      final en = toEnglishDigits(v).replaceAll(',', '');
+      String fa;
+      if (widget.groupThousands && en.isNotEmpty) {
+        // جداسازی سه‌رقمی مبلغ حین تایپ (بند ۱۹ نسخه ۳)
+        final grouped = _group(en);
+        fa = toPersianDigits(grouped);
+      } else {
+        fa = toPersianDigits(en);
+      }
       if (v != fa) {
         widget.controller.value = TextEditingValue(
           text: fa,
@@ -61,6 +74,16 @@ class _PersianNumberFieldState extends State<PersianNumberField> {
         );
       }
     });
+  }
+
+  static String _group(String digits) {
+    final b = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      final remain = digits.length - i;
+      b.write(digits[i]);
+      if (remain > 1 && remain % 3 == 1) b.write(',');
+    }
+    return b.toString();
   }
 
   @override

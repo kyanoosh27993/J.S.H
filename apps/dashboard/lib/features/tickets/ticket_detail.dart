@@ -457,7 +457,10 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                         'کاربر: ${snap.data ?? '...'}',
                         if (reason.isNotEmpty) 'دلیل: $reason',
                         if (note.isNotEmpty) note,
-                        (e['created_at'] ?? '') as String,
+                        // بند ۱۸ نسخه ۳ — تاریخ شمسی در تاریخچه وضعیت‌ها
+                        shamsiDateTime(
+                            DateTime.tryParse('${e['created_at'] ?? ''}') ??
+                                DateTime.now()),
                       ].join(' — '),
                       style: const TextStyle(fontSize: 11.5),
                     ),
