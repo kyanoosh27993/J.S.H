@@ -69,6 +69,14 @@ class AttachService {
 
   /// بازکردن فایل با نمایشگر سیستم — برای دیدن/چاپ رسید و عکس‌ها روی رایانه.
   /// روی گوشی در دسترس نیست (فراخوان پیام مناسب می‌دهد).
+  /// بند ۱۰.۶۳ — ویرایش توضیح یک عکس اتچ‌شده
+  static Future<void> updateNote(int attachId, String note) async {
+    final db = await Db.instance();
+    await db.update('attachments', {'note': note},
+        where: 'id = ?', whereArgs: [attachId]);
+    await AuditRepo.log('attach_note', 'توضیح اتچ #$attachId ویرایش شد');
+  }
+
   static Future<void> openSystem(String filePath) async {
     if (Platform.isWindows) {
       // explorer.exe ساده‌تر و امن‌تر از cmd /c start است (نیازی به shell نیست)

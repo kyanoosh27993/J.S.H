@@ -32,6 +32,38 @@ class AttachmentViewerPage extends StatelessWidget {
     );
   }
 
+  /// بند ۱۰.۶۳ — ویرایش توضیح عکس اتچ‌شده
+  Future<void> _editNote(BuildContext ctx) async {
+    final ctrl =
+        TextEditingController(text: (attach['note'] ?? '') as String);
+    final saved = await showDialog<bool>(
+      context: ctx,
+      builder: (c2) => AlertDialog(
+        title: const Text('ویرایش توضیح عکس'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 3,
+          decoration:
+              const InputDecoration(hintText: 'توضیح این عکس (اختیاری)'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c2, false),
+              child: const Text('انصراف')),
+          FilledButton(
+              onPressed: () => Navigator.pop(c2, true),
+              child: const Text('ذخیره')),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    await AttachService.updateNote(attach['id'] as int, ctrl.text.trim());
+    if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx)
+          .showSnackBar(const SnackBar(content: Text('توضیح ذخیره شد')));
+    }
+  }
+
   Future<void> _delete(BuildContext ctx) async {
     final ok = await showDialog<bool>(
       context: ctx,
@@ -124,6 +156,14 @@ class AttachmentViewerPage extends StatelessWidget {
                       size: 18, color: Colors.red),
                   label: const Text('حذف', style: TextStyle(color: Colors.red)),
                   onPressed: () => _delete(context),
+                ),
+                // بند ۱۰.۶۳ — اصلاح توضیح عکس اتچ‌شده
+                TextButton.icon(
+                  icon: const Icon(Icons.edit_outlined,
+                      size: 18, color: Colors.amber),
+                  label: const Text('ویرایش',
+                      style: TextStyle(color: Colors.amber)),
+                  onPressed: () => _editNote(context),
                 ),
                 const Spacer(),
                 FilledButton.tonalIcon(

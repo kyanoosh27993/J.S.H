@@ -27,6 +27,9 @@ class _SettingsPageState extends State<SettingsPage> {
   final invoiceStartCtrl = TextEditingController();
   int reminderHour = ReminderPrefs.defaultHour;
   bool saved = false;
+  // بند ۱ — نمایش اقرارنامه و پترن قفل در فرم پذیرش
+  bool showTerms = true;
+  bool showPattern = true;
 
   // لوازم همراه — قابل ویرایش (بند ۱۰)
   List<String> accessories = [];
@@ -77,6 +80,9 @@ class _SettingsPageState extends State<SettingsPage> {
       invoiceStartCtrl.text = s['invoice_start'] ?? '1';
       reminderHour =
           int.tryParse(s['reminder_hour'] ?? '') ?? ReminderPrefs.defaultHour;
+      // بند ۱ — خواندن تنظیم نمایش اقرارنامه/پترن فرم پذیرش
+      showTerms = (s['intake_show_terms'] ?? '1') != '0';
+      showPattern = (s['intake_show_pattern'] ?? '1') != '0';
       accessories = acc;
       imagePaths.addAll(paths);
     });
@@ -101,6 +107,9 @@ class _SettingsPageState extends State<SettingsPage> {
     await SettingsRepo.set('invoice_start',
         toEnglishDigits(invoiceStartCtrl.text.trim()).replaceAll(',', ''));
     await ShopSettingsService.saveAccessories(accessories);
+    // بند ۱ — تنظیم نمایش اقرارنامه/پترن در فرم پذیرش
+    await SettingsRepo.set('intake_show_terms', showTerms ? '1' : '0');
+    await SettingsRepo.set('intake_show_pattern', showPattern ? '1' : '0');
     setState(() => saved = true);
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) setState(() => saved = false);
@@ -160,6 +169,19 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             const SizedBox(height: 6),
+            // بند ۱ — سوییچ نمایش اقرارنامه و پترن قفل در فرم پذیرش
+            SwitchListTile(
+              value: showTerms,
+              onChanged: (v) => setState(() => showTerms = v),
+              title: const Text('نمایش اقرارنامه در فرم پذیرش (بند ۱)',
+                  style: TextStyle(fontSize: 13)),
+            ),
+            SwitchListTile(
+              value: showPattern,
+              onChanged: (v) => setState(() => showPattern = v),
+              title: const Text('نمایش پترن قفل دستگاه در فرم پذیرش (بند ۱)',
+                  style: TextStyle(fontSize: 13)),
+            ),
             Text('ساعت یادآوری روزانه: ${toPersianDigits('$reminderHour:00')}'),
             Slider(
               value: reminderHour.toDouble(),

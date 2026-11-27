@@ -102,6 +102,17 @@ void main() {
       expect(to, today.subtract(const Duration(days: 1)));
     });
 
+    test('بند ۱۶ — «فردا چه کارهایی را داریم» → بازه فردا و نیت یادآوری', () {
+      final today = DateTime.now();
+      final todayDay = DateTime(today.year, today.month, today.day);
+      final tm = todayDay.add(const Duration(days: 1));
+      final (f, t2) = AssistantService.extractDateRange('فردا چه کارهایی را داریم');
+      expect(f, tm);
+      expect(t2, tm);
+      expect(AssistantService.detectIntent('فردا چه کارهایی را داریم'),
+          'reminders');
+    });
+
     test('«ماه گذشته» → از اول ماه قبل تا آخرین روز ماه قبل', () {
       final now = DateTime.now();
       final firstThis = DateTime(now.year, now.month, 1);

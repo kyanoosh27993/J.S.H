@@ -34,6 +34,9 @@ class _IntakePageState extends State<IntakePage> {
   Customer? selected;
   bool newCustomer = false;
   bool terms = false;
+  // بند ۱ — نمایش/عدم‌نمایش اقرارنامه و پترن قفل بر پایه تنظیمات (پیش‌فرض: نمایش)
+  bool showTerms = true;
+  bool showPattern = true;
 
   // مشتری جدید — مطابق صفحه مشتریان (بند ۱۰)
   final cName = TextEditingController();
@@ -67,6 +70,16 @@ class _IntakePageState extends State<IntakePage> {
   void initState() {
     super.initState();
     _loadCustomers();
+    _loadFormVisibility();
+  }
+
+  /// بند ۱ — خواندن تنظیم نمایش اقرارنامه و پترن قفل
+  Future<void> _loadFormVisibility() async {
+    showTerms = (await SettingsRepo.get('intake_show_terms', '1')) != '0';
+    showPattern = (await SettingsRepo.get('intake_show_pattern', '1')) != '0';
+    // اگر اقرارنامه مخفی شود، تایید آن به‌صورت ضمنی لحاظ می‌شود
+    if (!showTerms && mounted) setState(() => terms = true);
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadCustomers() async {
@@ -696,21 +709,25 @@ class _IntakePageState extends State<IntakePage> {
               ],
             ),
             const SizedBox(height: 12),
-            CheckboxListTile(
-              value: terms,
-              onChanged: (v) => setState(() => terms = v ?? false),
-              title: const Text(
-                'متن اقرارنامه فرم سپردن را تایید می‌کنم: «آورنده قبض صحت گوشی شناخته می‌شود؛ در صورت بروز هرگونه مشکل و خاموش شدن گوشی، هیچ‌گونه ادعایی نسبت به این فروشگاه ندارم.»',
-                style: TextStyle(fontSize: 12.5, height: 1.8),
+            // بند ۱ — نمایش اقرارنامه بسته به تنظیمات؛ مخفی = تایید ضمنی
+            if (showTerms)
+              CheckboxListTile(
+                value: terms,
+                onChanged: (v) => setState(() => terms = v ?? false),
+                title: const Text(
+                  'متن اقرارنامه فرم سپردن را تایید می‌کنم: «آورنده قبض صحت گوشی شناخته می‌شود؛ در صورت بروز هرگونه مشکل و خاموش شدن گوشی، هیچ‌گونه ادعایی نسبت به این فروشگاه ندارم.»',
+                  style: TextStyle(fontSize: 12.5, height: 1.8),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            // بند ۷ — پترن قفل به‌جای محل امضا
-            LockPatternField(
-              label: 'شکل قفل پترن دستگاه (اگر دارد — بند ۷)',
-              initial: lockPattern,
-              onChanged: (v) => setState(() => lockPattern = v),
-            ),
+            if (showTerms) const SizedBox(height: 8),
+            // بند ۷ + بند ۱ — پترن قفل به‌جای محل امضا؛ قابل مخفی‌شدن از تنظیمات
+            if (showPattern)
+              LockPatternField(
+                label: 'شکل قفل پترن دستگاه (اگر دارد — بند ۷)',
+                initial: lockPattern,
+                onChanged: (v) => setState(() => lockPattern = v),
+              ),
+            if (showPattern) const SizedBox(height: 12),
             const SizedBox(height: 12),
             Wrap(
               spacing: 10,

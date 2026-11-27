@@ -63,7 +63,7 @@ class AssistantService {
     AssistantIntent('print_receipt', 'پرینت فیش رسید', ['پرینت', 'چاپ', 'فیش', 'رسید']),
     AssistantIntent('order_status', 'وضعیت سفارش', ['وضعیت', 'پیگیری', 'کجاست', 'چی شده', 'سفارش']),
     AssistantIntent('orders_summary', 'خلاصه سفارش‌ها', ['خلاصه', 'تعداد', 'سفارش های', 'سفارش های باز', 'گزارش سفارش']),
-    AssistantIntent('reminders', 'یادآوری‌های امروز', ['یادآوری', 'یادآور', 'یاداوری', 'یاداور', 'موعد', 'تحویل امروز', 'باید تحویل']),
+    AssistantIntent('reminders', 'یادآوری‌های امروز/فردا', ['یادآوری', 'یادآور', 'یاداوری', 'یاداور', 'موعد', 'تحویل امروز', 'تحویل فردا', 'کارهای فردا', 'باید تحویل']),
     AssistantIntent('finance', 'مالی و فروش', ['فروش', 'درآمد', 'سود', 'خالص', 'تخفیف', 'هزینه', 'خسارت', 'مالی']),
     AssistantIntent('user_performance', 'عملکرد کاربران', ['عملکرد', 'کاربران', 'کارمند']),
     AssistantIntent('warranty', 'گارانتی‌ها', ['گارانتی', 'ضمانت']),
@@ -193,6 +193,15 @@ class AssistantService {
       }
     }
 
+    // بند ۱۶ — «فردا چه کارهایی را داریم؟»
+    if (t.contains('فردا') && !t.contains('پس‌فردا')) {
+      final tm = today.add(const Duration(days: 1));
+      return (tm, tm);
+    }
+    if (t.contains('پس‌فردا')) {
+      final tm = today.add(const Duration(days: 2));
+      return (tm, tm);
+    }
     if (t.contains('دیروز')) {
       final y = today.subtract(const Duration(days: 1));
       return (y, y);
@@ -313,7 +322,7 @@ class AssistantService {
       case 'orders_summary':
         return _guard(me, 'page.orders', () => _intentOrdersSummary(range, norm));
       case 'reminders':
-        return _guard(me, 'page.reminders', () => _intentReminders());
+        return _guard(me, 'page.reminders', () => _intentReminders(range));
       case 'finance':
         return _guard(me, 'page.invoices', () => _intentFinance(range));
       case 'user_performance':
@@ -473,24 +482,33 @@ class AssistantService {
   /// موعدشان ابتدای امروز بود را کنار می‌گذاشت. اکنون بازه از ابتدای روز است و
   /// یادآوری‌های در انتظار تا ۷ روز آینده هم لیست می‌شوند.
 
-  static Future<AssistantReply> _intentReminders() async {
+  static Future<AssistantReply> _intentReminders(
+      (DateTime?, DateTime?) range) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final tomorrow = today.add(const Duration(days: 1));
-    final dueToday = (await TicketRepo.dueBetween(today, tomorrow))
+    // بند ۱۶ — بازه تک‌روزی غیرامروزی (فردا/پس‌فردا/تاریخ صریح) پذیرفته می‌شود
+    final (rFrom, rTo) = range;
+    var from = today;
+    var dayLabel = 'امروز';
+    if (rFrom != null && rTo != null && rFrom == rTo && rFrom != today) {
+      from = rFrom;
+      dayLabel = shamsiDate(rFrom);
+    }
+    final tomorrow = from.add(const Duration(days: 1));
+    final dueToday = (await TicketRepo.dueBetween(from, tomorrow))
         .where((t) => t.status != 'cancelled')
         .toList();
     final pending =
         await ReminderRepo.pendingBefore(tomorrow.add(const Duration(days: 7)));
     if (dueToday.isEmpty && pending.isEmpty) {
-      return const AssistantReply('یادآوری برای امروز نداری.');
+      return AssistantReply('یادآوری برای $dayLabel نداری.');
     }
     final nameMap = await CustomerRepo.nameMap();
     final tickets = await TicketRepo.all();
     final codeById = {for (final t in tickets) t.id!: t.code};
     final lines = <String>[
       for (final t in dueToday)
-        'موعد تحویل امروز — ${t.code} — ${nameMap[t.customerId] ?? ''} — '
+        'موعد تحویل $dayLabel — ${t.code} — ${nameMap[t.customerId] ?? ''} — '
             'ساعت ${t.dueTime} — ${statusLabel(t.status)}',
       for (final r in pending)
         'یادآوری ${shamsiDate(r.remindAt)}'
