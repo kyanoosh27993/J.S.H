@@ -84,6 +84,8 @@ class _DashboardPageState extends State<DashboardPage> {
     // فاز ۲ — گروه‌بندی سفارش‌های باز بر اساس کاربر مسئول + زمان آخرین تغییر (بند ۸)
     final names = <int, String>{};
     for (final u in await UserRepo.list()) {
+      // بند ۱ نسخه ۳ — سازنده با نام کاربری نمایش داده نشود
+      if ((u['role'] ?? '') as String == kRoleCreator) continue;
       final dn = (u['display_name'] ?? '') as String;
       names[u['id'] as int] =
           dn.isEmpty ? (u['username'] ?? '') as String : dn;

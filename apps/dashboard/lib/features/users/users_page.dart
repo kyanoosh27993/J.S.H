@@ -33,7 +33,10 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   Future<void> _load() async {
-    final rows = await UserRepo.list();
+    // بند ۱ نسخه ۳ — اکانت سازنده در هیچ لیستی نمایش داده نمی‌شود (ورود او با نام کاربری خودش)
+    final rows = (await UserRepo.list())
+        .where((u) => (u['role'] ?? '') as String != kRoleCreator)
+        .toList();
     if (!mounted) return;
     setState(() {
       users = rows;

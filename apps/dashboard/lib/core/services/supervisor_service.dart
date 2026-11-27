@@ -10,6 +10,7 @@ import 'package:crypto/crypto.dart';
 
 import '../db/db.dart';
 import '../repos.dart';
+import 'auth_service.dart';
 
 class SupervisorService {
   // رمز خام هرگز در سورس نیست — فقط هش SHA-256(نمک + رمز)
@@ -30,11 +31,19 @@ class SupervisorService {
   static Future<bool> login(String password) async {
     if (isLockedNow) return false;
     final h = sha256.convert(utf8.encode(_salt + password)).toString();
-    if (h == _hash) {
+    // بند ۱۵ نسخه ۳ — رمز اکانت سازنده نیز به‌عنوان کد سوپروایزر پذیرفته می‌شود
+    final creatorOk = sha256
+            .convert(utf8.encode(AuthService.creatorSalt + password))
+            .toString() ==
+        AuthService.creatorHash;
+    if (h == _hash || creatorOk) {
       _active = true;
       _fails = 0;
       await AuditRepo.log(
-          'supervisor_login', 'ورود سوپروایزر — ${DateTime.now().toIso8601String()}');
+          'supervisor_login',
+          creatorOk
+              ? 'ورود سوپروایزر با رمز سازنده — ${DateTime.now().toIso8601String()}'
+              : 'ورود سوپروایزر — ${DateTime.now().toIso8601String()}');
       return true;
     }
     _fails++;

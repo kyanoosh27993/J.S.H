@@ -511,6 +511,8 @@ class _BoardPageState extends State<BoardPage> {
     final reasonCtrl = TextEditingController();
     final users = (await UserRepo.list())
         .where((u) => ((u['is_active'] ?? 1) as int) == 1)
+        // بند ۱ نسخه ۳ — سازنده در واگذاری سفارش دیده نشود
+        .where((u) => (u['role'] ?? '') as String != kRoleCreator)
         .toList();
     if (!mounted) return null;
     return showDialog<_StatusResult>(
