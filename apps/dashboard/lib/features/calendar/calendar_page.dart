@@ -1,11 +1,12 @@
 /// صفحه تقویم شمسی سفارشات — قاعده ۳
 /// نمایش سفارش‌ها با رنگ وضعیت + تعطیلات رسمی + خروجی Google Calendar
+/// + فاز ۹ (بند ۲۶): اسناد ابطال‌شده با نشان مجزا (قرمز/خاکستری) در روز
+/// صدور، نشان «ابطال» در راهنمای رنگ‌ها و دیالوگ جزئیات (شماره، نوع، دلیل).
 library;
 
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart' as j;
 
-import '../../core/db/db.dart';
 import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
@@ -46,7 +47,8 @@ class CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<CalendarPage> {
   late j.Jalali view;
   Map<String, List<Ticket>> byDay = {};
-  Map<String, List<String>> cancelledByDay = {};
+  // فاز ۹ — بند ۲۶: اسناد ابطالی به تفکیک روز صدور (ردیف خام invoices)
+  Map<String, List<Map<String, Object?>>> cancelledByDay = {};
   bool includeDelivered = true;
   bool exporting = false;
 
@@ -65,19 +67,20 @@ class _CalendarPageState extends State<CalendarPage> {
       final jd = j.Jalali.fromDateTime(t.dueDate);
       map.putIfAbsent('${jd.year}-${jd.month}-${jd.day}', () => []).add(t);
     }
-    // بند ۱۶ — ابطال‌شده‌ها هم در تقویم نمایش داده شوند
-    final cancelled = <String, List<String>>{};
-    final db = await Db.instance();
-    final invs = await db.query('invoices',
-        where: 'status = ? AND cancelled_at != ?',
-        whereArgs: ['cancelled', '']);
+    // فاز ۹ — بند ۲۶: ابطالی‌ها با کوئری ریپازیتوری (قابل تست) و نمایش
+    // بر پایه روز صدور سند (issued_at)؛ دیالوگ، زمان ابطال را هم می‌گوید.
+    final now = DateTime.now();
+    final cancelled = <String, List<Map<String, Object?>>>{};
+    final invs = await InvoiceRepo.cancelledInRange(
+        DateTime(now.year - 6, 1, 1), DateTime(now.year + 6, 1, 1));
     for (final inv in invs) {
-      final dt = DateTime.tryParse((inv['cancelled_at'] ?? '') as String);
+      final dt =
+          DateTime.tryParse((inv['issued_at'] ?? '') as String);
       if (dt == null) continue;
       final jd = j.Jalali.fromDateTime(dt);
       cancelled
           .putIfAbsent('${jd.year}-${jd.month}-${jd.day}', () => [])
-          .add('ابطال ${(inv['number'] ?? '') as String}');
+          .add(inv);
     }
     if (!mounted) return;
     setState(() {
@@ -177,7 +180,7 @@ class _CalendarPageState extends State<CalendarPage> {
               ],
             ),
             const SizedBox(height: 6),
-            // راهنمای رنگ‌ها
+            // راهنمای رنگ‌ها — + بند ۲۶: نشان ابطال‌شده‌ها
             Wrap(
               spacing: 8,
               runSpacing: 4,
@@ -189,6 +192,23 @@ class _CalendarPageState extends State<CalendarPage> {
                     label: Text(statusLabel(s),
                         style: TextStyle(fontSize: 10.5, color: statusColor(s))),
                   ),
+                Chip(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: Colors.red.withValues(alpha: 0.12),
+                  side: BorderSide(color: Colors.red.withValues(alpha: 0.5)),
+                  avatar: Icon(Icons.block, size: 12, color: Colors.red),
+                  label: Text('ابطال سند',
+                      style: TextStyle(fontSize: 10.5, color: Colors.red)),
+                ),
+                Chip(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: Colors.grey.shade300,
+                  side: BorderSide(color: Colors.grey.shade500),
+                  avatar: Icon(Icons.block, size: 12, color: Colors.grey.shade600),
+                  label: Text('پیش‌فاکتور ابطالی',
+                      style: TextStyle(
+                          fontSize: 10.5, color: Colors.grey.shade700)),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -312,23 +332,37 @@ class _CalendarPageState extends State<CalendarPage> {
                 itemCount: (tickets.length + cancelled.length)
                     .clamp(0, 4),
                 itemBuilder: (_, i) {
-                  // بند ۱۶ — ابطالی‌ها هم در خونه تقویم
+                  // بند ۲۶ — نشان مجزا «ابطال»: فاکتور قطعی قرمز،
+                  // پیش‌فاکتور خاکستری؛ کلیک → دیالوگ جزئیات سند ابطالی
                   if (i >= tickets.length) {
                     final c = cancelled[i - tickets.length];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 2),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text(c,
-                            style: const TextStyle(
-                                fontSize: 8.5, color: Colors.grey)),
+                    final isFinal =
+                        (c['kind'] ?? '') == InvoiceRepo.kindFinal;
+                    final color = isFinal ? Colors.red : Colors.grey;
+                    return InkWell(
+                      onTap: () => _voidedDialog(c),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: isFinal ? 0.14 : 0.35),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: color.withValues(alpha: 0.6),
+                              width: 0.6),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(
+                            'ابطال ${(c['number'] ?? '') as String}',
+                            style: TextStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.bold,
+                                color: color),
+                          ),
+                        ),
                       ),
                     );
                   }
@@ -375,9 +409,9 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  /// بند ۱۶ — کلیک روی روز → لیست کامل کارهای آن روز
+  /// بند ۱۶ + بند ۲۶ — کلیک روی روز → لیست کامل کارهای آن روز + اسناد ابطالی
   void _dayDialog(j.Jalali date, List<Ticket> tickets,
-      List<String> cancelled) {
+      List<Map<String, Object?>> cancelled) {
     showDialog<void>(
       context: context,
       builder: (ctx) => Directionality(
@@ -414,10 +448,18 @@ class _CalendarPageState extends State<CalendarPage> {
                   ListTile(
                     dense: true,
                     leading: Icon(Icons.block,
-                        size: 16, color: Colors.grey.shade500),
-                    title: Text(c,
+                        size: 16,
+                        color: (c['kind'] ?? '') == InvoiceRepo.kindFinal
+                            ? Colors.red
+                            : Colors.grey.shade500),
+                    title: Text(
+                        'ابطال سند ${toPersianDigits((c['number'] ?? '') as String)}'
+                        ' — ${(c['kind'] ?? '') == InvoiceRepo.kindFinal ? 'فاکتور قطعی' : 'پیش‌فاکتور'}',
                         style: const TextStyle(
-                            fontSize: 12.5, color: Colors.grey)),
+                            fontSize: 12.5, color: Colors.red)),
+                    subtitle: Text(
+                        'دلیل: ${((c['cancel_reason'] ?? '') as String).isEmpty ? '—' : (c['cancel_reason'] ?? '') as String}',
+                        style: const TextStyle(fontSize: 10.5)),
                   ),
               ],
             ),
@@ -426,6 +468,47 @@ class _CalendarPageState extends State<CalendarPage> {
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('بستن')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// فاز ۹ — بند ۲۶: کلیک روی نشان ابطال یک روز → دیالوگ جزئیات سند
+  /// (شماره، نوع، دلیل ابطال و زمان ابطال)
+  void _voidedDialog(Map<String, Object?> inv) {
+    final kind = (inv['kind'] ?? '') == InvoiceRepo.kindFinal;
+    final cancelledAt = DateTime.tryParse((inv['cancelled_at'] ?? '') as String);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          icon: Icon(Icons.block,
+              size: 30, color: kind ? Colors.red : Colors.grey),
+          title: Text(
+              'سند ابطال‌شده ${toPersianDigits((inv['number'] ?? '') as String)}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('نوع: ${kind ? 'فاکتور قطعی' : 'پیش‌فاکتور'}',
+                  style: const TextStyle(fontSize: 13)),
+              Text('جمع: ${moneyToman((inv['total'] ?? 0) as int)} تومان',
+                  style: const TextStyle(fontSize: 13)),
+              Text('تاریخ صدور: ${shamsiDate(DateTime.tryParse((inv['issued_at'] ?? '') as String) ?? DateTime.now())}',
+                  style: const TextStyle(fontSize: 13)),
+              Text(
+                  'زمان ابطال: ${cancelledAt == null ? '—' : shamsiDateTime(cancelledAt)}',
+                  style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 8),
+              Text(
+                  'دلیل ابطال: ${((inv['cancel_reason'] ?? '') as String).isEmpty ? '—' : (inv['cancel_reason'] ?? '') as String}',
+                  style: const TextStyle(fontSize: 13, color: Colors.red)),
+            ],
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('خب')),
           ],
         ),
       ),

@@ -1,12 +1,12 @@
-/// یادآوری‌ها (F-05) — فاز ۶ (بند ۱۷)
-/// سربرگ ۱: کارهای امروز با جزئیات مالی + یادآوری‌های ثبت‌شده (قابل حذف)
-/// سربرگ ۲: گزارش روزانه — همه تغییرات یک روز با خروجی فایل در مسیر دلخواه
+/// یادآوری‌ها (F-05) — فاز ۶ (بند ۱۷) + فاز ۹ (بند ۲۷)
+/// سربرگ ۱: کارهای امروز با جزئیات مالی، گروه‌بندی «امروز/فردا/گذشته/پیش‌رو»
+/// + یادآوری‌های ثبت‌شده قابل حذف
+/// سربرگ ۲: گزارش روزانه — همه تغییرات یک روز + خروجی هم‌زمان txt و اکسل
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
-import '../../core/db/db.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/daily_report_service.dart';
@@ -60,7 +60,7 @@ class _RemindersPageState extends State<RemindersPage> {
     });
   }
 
-  /// بند ۱۷ — حذف یادآوری از داخل برنامه
+  /// بند ۱۷ + بند ۲۷ — حذف یادآوری از داخل برنامه (ReminderRepo.delete)
   Future<void> _deleteReminder(Reminder r) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -78,8 +78,7 @@ class _RemindersPageState extends State<RemindersPage> {
       ),
     );
     if (ok != true) return;
-    final db = await Db.instance();
-    await db.delete('reminders', where: 'id = ?', whereArgs: [r.id]);
+    await ReminderRepo.delete(r.id!);
     _load();
   }
 
@@ -128,7 +127,13 @@ class _RemindersPageState extends State<RemindersPage> {
     );
   }
 
+  /// بند ۲۷ — نمایش گروه‌بندی‌شده: امروز / فردا / گذشته / پیش‌رو
   Widget _remindersTab() {
+    // گروه‌بندی بر پایه daysLeft (موعد − امروز، منفی = گذشته)
+    final today = tasks.where((t) => t.daysLeft == 0).toList();
+    final tomorrow = tasks.where((t) => t.daysLeft == 1).toList();
+    final overdue = tasks.where((t) => t.daysLeft < 0).toList();
+    final upcoming = tasks.where((t) => t.daysLeft > 1).toList();
     return ListView(
       children: [
         Text(
@@ -136,9 +141,10 @@ class _RemindersPageState extends State<RemindersPage> {
           style: const TextStyle(fontSize: 12.5, color: Colors.blueGrey),
         ),
         const SizedBox(height: 10),
-        if (tasks.isEmpty)
-          const Text('در پنجره یادآوری، سفارش در انتظار تحویلی نیست.'),
-        ...tasks.map(_taskCard),
+        _groupSection('موعد تحویل امروز', today, Colors.red),
+        _groupSection('موعد تحویل فردا', tomorrow, Colors.amber.shade800),
+        _groupSection('موعد گذشته', overdue, Colors.deepOrange),
+        _groupSection('یادآوری‌های پیش‌رو', upcoming, Colors.blueGrey),
         const Divider(height: 28),
         Text('یادآوری‌های ثبت‌شده',
             style: Theme.of(context).textTheme.titleMedium),
@@ -149,13 +155,40 @@ class _RemindersPageState extends State<RemindersPage> {
               subtitle: Text(
                   'زمان: ${shamsiDateTime(r.remindAt)} — وضعیت: ${r.status == 'pending' ? 'در انتظار نمایش' : 'نمایش داده شده'}'),
               trailing: IconButton(
-                tooltip: 'حذف یادآوری (بند ۱۷)',
+                tooltip: 'حذف یادآوری (بند ۱۷ و ۲۷)',
                 icon: const Icon(Icons.delete_outline, size: 19),
                 onPressed: () => _deleteReminder(r),
               ),
             )),
         if (pendingReminders.isEmpty)
           const Text('یادآوری ثبت‌شده‌ای نیست.'),
+      ],
+    );
+  }
+
+  /// سربرگ یک گروه یادآوری — فقط اگر ردیف داشته باشد نمایش داده می‌شود
+  Widget _groupSection(String title, List<TodayTask> list, Color color) {
+    if (list.isEmpty) return const SizedBox();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 2),
+          child: Row(
+            children: [
+              Icon(Icons.flag, size: 15, color: color),
+              const SizedBox(width: 6),
+              Text(
+                '$title (${toPersianDigits('${list.length}')})',
+                style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.bold,
+                    color: color),
+              ),
+            ],
+          ),
+        ),
+        ...list.map(_taskCard),
       ],
     );
   }
@@ -263,6 +296,17 @@ class _DailyReportTabState extends State<_DailyReportTab> {
     ));
   }
 
+  /// بند ۲۷ — خروجی روزانه هم‌زمان txt و xlsx در Documents/JSH_reports
+  Future<void> _exportBoth() async {
+    final (txtPath, xlsxPath) =
+        await DailyReportService.exportBoth(day, entries);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('گزارش روزانه ذخیره شد:\n$txtPath\n$xlsxPath'),
+      duration: const Duration(seconds: 5),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -287,6 +331,11 @@ class _DailyReportTabState extends State<_DailyReportTab> {
               onPressed: _run,
               icon: const Icon(Icons.query_stats, size: 18),
               label: const Text('نمایش'),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: entries.isEmpty ? null : _exportBoth,
+              icon: const Icon(Icons.description, size: 18),
+              label: const Text('گزارش روزانه (txt + اکسل)'),
             ),
             OutlinedButton.icon(
               onPressed: entries.isEmpty ? null : _export,

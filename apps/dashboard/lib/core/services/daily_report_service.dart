@@ -1,12 +1,16 @@
-/// گزارش روزانه — فاز ۶ (بند ۱۷)
+/// گزارش روزانه — فاز ۶ (بند ۱۷) + فاز ۹ (بند ۲۷)
 /// همه تغییرات یک روز: پذیرش، تغییر وضعیت کارتابل، تحویل، وصول، تخفیف،
 /// ابطال، حذف — به‌صورت لیست قابل نمایش + خروجی فایل متنی در مسیر دلخواه
 /// کاربر + امکان حذف یادآوری از داخل برنامه.
+/// فاز ۹ — بند ۲۷: خروجی روزانه هم‌زمان txt و xlsx (اکسل بدون بسته بیرونی —
+/// بسته spreadsheet برنامه وجود ندارد؛ فایل xlsx معتبر با package:archive
+/// به‌صورت zip کاربرگ ساده با سلول inlineStr ساخته می‌شود).
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:shamsi_date/shamsi_date.dart' as j;
 import 'package:path_provider/path_provider.dart';
@@ -142,6 +146,107 @@ class DailyReportService {
     final f = File(path);
     await f.writeAsString(text, encoding: utf8);
     return path;
+  }
+
+  // ── فاز ۹ — بند ۲۷: خروجی اکسل بدون بسته بیرونی ──────────────────────
+
+  /// escape استاندارد XML برای متن سلول‌ها
+  static String _xmlEsc(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
+
+  /// سلول متنی با inlineStr — بدون sharedStrings (ساده و معتبر)
+  static String _strCell(String ref, String text) =>
+      '<c r="$ref" t="inlineStr"><is><t xml:space="preserve">'
+      '${_xmlEsc(text)}</t></is></c>';
+
+  /// سلول رشته در ستون A تا C با ردیف r
+  static String _rowCells(int r, String a, String b, String c) =>
+      '<row r="$r">${_strCell('A$r', a)}${_strCell('B$r', b)}'
+      '${_strCell('C$r', c)}</row>';
+
+  /// ساخت بایت‌های یک فایل xlsx معتبر تک‌کاربرگی از رخدادهای روز.
+  /// فایل xlsx در واقع یک zip است؛ کمینه اجزای لازم:
+  /// [Content_Types].xml + _rels/.rels + workbook + rels + sheet1
+  static List<int> buildXlsx(DateTime day, List<DailyReportEntry> entries) {
+    final jdt = j.Jalali.fromDateTime(day);
+    final title =
+        'گزارش روزانه ${toPersianDigits('${jdt.year}/${jdt.month.toString().padLeft(2, '0')}/${jdt.day.toString().padLeft(2, '0')}')}';
+
+    final sb = StringBuffer();
+    sb.write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
+    sb.write('<worksheet xmlns="http://schemas.openxmlformats.org/'
+        'spreadsheetml/2006/main"><sheetData>');
+    sb.write(_rowCells(1, 'گزارش روزانه برنامه J.S.H', '', ''));
+    sb.write(_rowCells(2, title, '', ''));
+    sb.write(_rowCells(3, 'ساعت', 'دسته', 'شرح'));
+    var r = 4;
+    for (final e in entries) {
+      sb.write(_rowCells(r, e.time, e.category, e.text));
+      r++;
+    }
+    sb.write(_rowCells(r, '', '', 'تعداد رخدادها: ${entries.length}'));
+    sb.write('</sheetData></worksheet>');
+
+    const contentTypes =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '</Types>';
+    const rels =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        '</Relationships>';
+    const workbook =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="گزارش روزانه" sheetId="1" r:id="rId1"/></sheets>'
+        '</workbook>';
+    const workbookRels =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        '</Relationships>';
+
+    final archive = Archive()
+      ..addFile(ArchiveFile.string('[Content_Types].xml', contentTypes))
+      ..addFile(ArchiveFile.string('_rels/.rels', rels))
+      ..addFile(ArchiveFile.string('xl/workbook.xml', workbook))
+      ..addFile(ArchiveFile.string('xl/_rels/workbook.xml.rels', workbookRels))
+      ..addFile(ArchiveFile.string(
+          'xl/worksheets/sheet1.xml', sb.toString()));
+    return ZipEncoder().encode(archive);
+  }
+
+  /// نام فایل پایه با تاریخ شمسی — بند ۲۷
+  static String _shamsiBaseName(DateTime day) {
+    final jdt = j.Jalali.fromDateTime(day);
+    return 'jsh-daily-'
+        '${jdt.year}${jdt.month.toString().padLeft(2, '0')}${jdt.day.toString().padLeft(2, '0')}';
+  }
+
+  /// فاز ۹ — بند ۲۷: خروجی روزانه هم‌زمان txt و xlsx در Documents/JSH_reports
+  /// خروجی: (مسیر txt، مسیر xlsx)
+  static Future<(String, String)> exportBoth(
+      DateTime day, List<DailyReportEntry> entries) async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = p.join(docs.path, 'JSH_reports');
+    await Directory(dir).create(recursive: true);
+    final base = _shamsiBaseName(day);
+    final txtPath = p.join(dir, '$base.txt');
+    final xlsxPath = p.join(dir, '$base.xlsx');
+    await File(txtPath)
+        .writeAsString(buildText(day, entries), encoding: utf8);
+    await File(xlsxPath).writeAsBytes(buildXlsx(day, entries), flush: true);
+    return (txtPath, xlsxPath);
   }
 }
 

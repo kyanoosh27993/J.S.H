@@ -8,6 +8,8 @@ import 'services/supervisor_service.dart' show AuditRepo;
 import 'package:shamsi_date/shamsi_date.dart' as j;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'utils.dart' show shamsiDate;
+
 class SettingsRepo {
   static Future<Map<String, String>> all() async {
     final db = await Db.instance();
@@ -568,6 +570,74 @@ class ReminderRepo {
         limit: 1);
     return rows.isEmpty ? null : Reminder.fromMap(rows.first);
   }
+
+  /// فاز ۹ — بند ۲۷: حذف یادآوری در انتظار از داخل برنامه
+  static Future<void> delete(int id) async {
+    final db = await Db.instance();
+    await db.delete('reminders', where: 'id = ?', whereArgs: [id]);
+  }
+}
+
+/// فاز ۹ — بند ۲۵: تنظیم قلم‌به‌قلم گارانتی (کاهش/ابطال/افزایش مدت)
+/// هر تنظیم یک ردیف در warranty_adjusts؛ آخرین ردیف هر (ticket_id, item_id)
+/// تاریخ پایان نمایشی را حاکم می‌کند. گارانتی سطح سفارش (warranty_records)
+/// با itemId = null تنظیم می‌شود.
+class WarrantyAdjustRepo {
+  /// ثبت تنظیم + لاگ حسابرسی — خروجی: id ردیف
+  static Future<int> add({
+    required int ticketId,
+    int? itemId,
+    required DateTime oldEnd,
+    required DateTime newEnd,
+    required String action, // reduce | extend | void
+    String reason = '',
+    int userId = 0,
+  }) async {
+    final db = await Db.instance();
+    final id = await db.insert(
+      'warranty_adjusts',
+      WarrantyAdjust(
+        ticketId: ticketId,
+        itemId: itemId,
+        oldEnd: oldEnd,
+        newEnd: newEnd,
+        action: action,
+        reason: reason,
+        userId: userId == 0 ? null : userId,
+      ).toMap(),
+    );
+    final target = itemId == null ? 'سفارش #$ticketId' : 'سفارش #$ticketId قلم #$itemId';
+    final actFa = action == 'void'
+        ? 'ابطال کامل'
+        : action == 'extend'
+            ? 'افزایش مدت'
+            : 'کاهش مدت';
+    await AuditRepo.log('warranty_adjust',
+        '$actFa گارانتی $target: ${shamsiDate(oldEnd)} ← ${shamsiDate(newEnd)}'
+        '${reason.isEmpty ? '' : ' — دلیل: $reason'} — کاربر #$userId');
+    return id;
+  }
+
+  /// آخرین تنظیم حاکم برای گارانتی سطح سفارش یا یک قلم خاص
+  static Future<WarrantyAdjust?> latestFor({required int ticketId, int? itemId}) async {
+    final db = await Db.instance();
+    final rows = await db.query(
+      'warranty_adjusts',
+      where: itemId == null ? 'ticket_id = ? AND item_id IS NULL' : 'ticket_id = ? AND item_id = ?',
+      whereArgs: itemId == null ? [ticketId] : [ticketId, itemId],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : WarrantyAdjust.fromMap(rows.first);
+  }
+
+  /// همه تنظیم‌های یک سفارش — برای زیرنویس ردیف‌ها
+  static Future<List<WarrantyAdjust>> forTicket(int ticketId) async {
+    final db = await Db.instance();
+    final rows = await db.query('warranty_adjusts',
+        where: 'ticket_id = ?', whereArgs: [ticketId], orderBy: 'id ASC');
+    return rows.map(WarrantyAdjust.fromMap).toList();
+  }
 }
 
 class LicenseRepo {
@@ -908,5 +978,21 @@ class InvoiceRepo {
     final rows = await db.query('invoices',
         where: 'ticket_id = ?', whereArgs: [ticketId], limit: 1);
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// فاز ۹ — بند ۲۶: اسناد ابطال‌شده در بازه زمانی (بر پایه cancelled_at)
+  /// خروجی ردیف خام invoices است: number، kind، cancel_reason، cancelled_at.
+  /// تقویم، هر سند را در روز صدور آن (issued_at) نشان می‌دهد و دیالوگ،
+  /// زمان ابطال را جدا گزارش می‌کند.
+  static Future<List<Map<String, Object?>>> cancelledInRange(
+      DateTime from, DateTime to) async {
+    final db = await Db.instance();
+    return db.query(
+      'invoices',
+      where: "status = 'cancelled' AND cancelled_at IS NOT NULL "
+          "AND cancelled_at != '' AND cancelled_at >= ? AND cancelled_at < ?",
+      whereArgs: [from.toIso8601String(), to.toIso8601String()],
+      orderBy: 'cancelled_at ASC',
+    );
   }
 }

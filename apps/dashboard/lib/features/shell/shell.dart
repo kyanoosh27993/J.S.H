@@ -16,6 +16,7 @@ import '../../core/utils.dart';
 import '../../shared/widgets/app_text.dart';
 import '../../shared/widgets/hover_tile.dart';
 import '../assistant/assistant_page.dart';
+import '../activity/activity_page.dart';
 import '../board/board.dart';
 import '../calendar/calendar_page.dart';
 import '../cashbox/cashbox_page.dart';
@@ -150,6 +151,10 @@ class _MainShellState extends State<MainShell> {
     _NavItem(Icons.support_agent_rounded, 'پشتیبانی',
         permKey: 'page.support',
         sections: ['اطلاعات سازنده', 'لایسنس']),
+    // فاز ۹ — بند ۱۸ فایل ۲: گزارش فعالیت‌ها (گیت با page.home)
+    _NavItem(Icons.history, 'گزارش فعالیت‌ها',
+        permKey: 'page.home',
+        sections: ['تاریخچه رویدادها', 'فیلتر عملکرد']),
   ];
 
   /// فهرست نمایان برای کاربر جاری — فاز ۲ (دسترسی تفکیکی، بند ۸)
@@ -609,6 +614,9 @@ class _MainShellState extends State<MainShell> {
         return const ThemeSettingsPage();
       case 15:
         return SupportPage(session: widget.session);
+      // فاز ۹ — بند ۱۸ فایل ۲: صفحه گزارش فعالیت‌ها
+      case 16:
+        return const ActivityPage();
       default:
         return const SizedBox();
     }

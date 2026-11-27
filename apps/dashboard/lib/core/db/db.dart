@@ -163,6 +163,21 @@ CREATE TABLE IF NOT EXISTS warranty_records (
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL
 );
+// فاز ۹ — بند ۲۵: تنظیمات قلم‌به‌قلم گارانتی (کاهش/ابطال/افزایش مدت)
+// چون warranty_records برای هر سفارش یکتاست، هر تغییر به‌صورت ردیف
+// جداگانه اینجا ذخیره می‌شود؛ آخرین ردیف هر (ticket_id, item_id) حاکم است.
+CREATE TABLE IF NOT EXISTS warranty_adjusts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+  item_id INTEGER,
+  old_end TEXT NOT NULL,
+  new_end TEXT NOT NULL,
+  action TEXT NOT NULL DEFAULT 'reduce',
+  reason TEXT DEFAULT '',
+  user_id INTEGER,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_warranty_adjusts_ticket ON warranty_adjusts(ticket_id);
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   action TEXT NOT NULL,
@@ -371,7 +386,7 @@ SELECT id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_p
   static Future<String> dbPath() async {
     // فاز ۸ — بند ۰: همان منطق resolveBaseDir (پرتابل → پوشه نصب)
     final dir = await InstallPaths.resolveBaseDir();
-    return p.join(dir.path, 'jsh_dashboard.db');
+    return p.join(dir, 'jsh_dashboard.db');
   }
 
   /// بستن بانک برای بازیابی/جایگزینی فایل

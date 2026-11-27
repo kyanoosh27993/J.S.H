@@ -355,6 +355,63 @@ class Reminder {
       };
 }
 
+/// فاز ۹ — بند ۲۵: تنظیم قلم‌به‌قلم گارانتی (کاهش/ابطال/افزایش مدت)
+/// چون warranty_records برای هر سفارش یکتاست، هر تنظیم به‌صورت ردیف جداگانه
+/// در warranty_adjusts ذخیره می‌شود؛ آخرین ردیف هر (ticket_id, item_id) حاکم است.
+class WarrantyAdjust {
+  int? id;
+  int ticketId;
+  int? itemId; // null = سطح سفارش (گارانتی warranty_records)
+  DateTime oldEnd;
+  DateTime newEnd;
+  String action; // reduce | extend | void
+  String reason;
+  int? userId;
+  String createdAt;
+
+  WarrantyAdjust({
+    this.id,
+    required this.ticketId,
+    this.itemId,
+    required this.oldEnd,
+    required this.newEnd,
+    required this.action,
+    this.reason = '',
+    this.userId,
+    String? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now().toIso8601String();
+
+  factory WarrantyAdjust.fromMap(Map<String, Object?> m) => WarrantyAdjust(
+        id: m['id'] as int?,
+        ticketId: m['ticket_id'] as int,
+        itemId: m['item_id'] as int?,
+        oldEnd: DateTime.parse((m['old_end'] ?? '') as String),
+        newEnd: DateTime.parse((m['new_end'] ?? '') as String),
+        action: (m['action'] ?? 'reduce') as String,
+        reason: (m['reason'] ?? '') as String,
+        userId: m['user_id'] as int?,
+        createdAt: (m['created_at'] ?? '') as String,
+      );
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'ticket_id': ticketId,
+        'item_id': itemId,
+        'old_end': oldEnd.toIso8601String(),
+        'new_end': newEnd.toIso8601String(),
+        'action': action,
+        'reason': reason,
+        'user_id': userId,
+        'created_at': createdAt,
+      };
+
+  String get actionFa => switch (action) {
+        'void' => 'ابطال گارانتی',
+        'extend' => 'افزایش مدت',
+        _ => 'کاهش مدت',
+      };
+}
+
 /// وضعیت لایسنس و گزارش نصب (F-09 + N-03 + فعال‌سازی کد — فاز ۱ نقشه راه نسخه ۲)
 class LicenseState {
   int installCount;
