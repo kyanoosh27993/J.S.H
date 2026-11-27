@@ -70,7 +70,7 @@ class AssistantService {
     AssistantIntent('cancelled_invoices', 'فاکتورهای ابطال‌شده', ['ابطال', 'ابطالی', 'ابطال شده']),
     AssistantIntent('daily_report', 'گزارش روزانه کامل', ['گزارش روزانه', 'گزارش کامل', 'رخداد', 'گزارش']),
     AssistantIntent('balance', 'بدهی و قابل وصول', ['بدهی', 'باقیمانده', 'قابل وصول', 'بدهکار', 'طلب']),
-    AssistantIntent('backup', 'بک‌آپ', ['بک اپ', 'بکاپ', 'پشتیبان']),
+    AssistantIntent('backup', 'بک‌آپ', ['بک اپ', 'بک آپ', 'بکاپ', 'پشتیبان', 'بک‌آپ']),
     AssistantIntent('forecast', 'پیش‌بینی فروش', ['پیش بینی', 'پیشبینی']),
   ];
 

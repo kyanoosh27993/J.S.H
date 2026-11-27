@@ -36,6 +36,24 @@ class ClockTamperedException implements Exception {
 class ActivationService {
   ActivationService._();
 
+  // ── بازبینی ضد هک فاز ۸ (بند ۳) — نتیجه بازبینی، صادقانه ─────────────────
+  // (الف) تاریخ: `clockGuard` پایین‌تر، بیشینه تاریخ دیده‌شده را از سه مکان
+  //      مستقل (lastSeenDate رکورد + آینه settings + فایل پنهان) می‌گیرد و
+  //      عقب‌بردن بیش از یک روز را با ClockTamperedException قفل می‌کند؛
+  //      در app_session.init این خطا قفل کامل + audit_log «date_rollback» دارد.
+  // (ب) یکپارچگی: `LicenseIntegrity.verify` (supervisor_service.dart) هنگام هر
+  //      init فراخوانی می‌شود (app_session.init گام ۱-ب) — ناهم‌خوانی HMAC
+  //      رکورد لایسنس یا کم‌شدن شمارنده نصب از آینه → قفل «دستکاری». رکورد
+  //      activation_code/activation_expiry جداگانه محافظت می‌شوند، چون خود کد
+  //      فعال‌سازی امضای HMAC داخلی دارد و در هر اجرا با ActivationCodec.verify
+  //      از نو اعتبارسنجی می‌شود؛ lastSeen هم آینه و فایل پنهان دارد.
+  // (ج) کد فعال‌سازی: طبق packages/activation_core/lib/activation_core.dart
+  //      payload = magic + version + expiryDays(3) + maxReinstalls + deviceHash(8)
+  //      یعنی کد به deviceId (اثر انگشت مادربورد+CPU) و تاریخ انقضا هم‌زمان
+  //      متصل است و HMAC-SHA256(payload) کل پیلود را پوشش می‌دهد — بدون تغییر
+  //      رمزنگاریِ بسته؛ این سرویس فقط مصرف‌کننده آن است.
+  // ───────────────────────────────────────────────────────────────────────────
+
   /// شناسه کامل دستگاه — برای تولید کد فعال‌سازی در برنامه جانبی
   static Future<String> deviceId() => LicenseService.fingerprint();
 

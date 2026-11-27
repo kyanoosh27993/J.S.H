@@ -79,10 +79,23 @@ class AppSession {
     await LicenseIntegrity.write();
 
     // ۱-پ) نگهبان تاریخ سیستم — ضد عقب‌بردن تاریخ (بند ۳ درخواست صاحب پروژه)
+    //
+    // بازبینی ضد هک فاز ۸ (بند ۳):
+    //   • lastSeen از سه مکان مستقل خوانده و بیشینه گرفته می‌شود (رکورد لایسنس،
+    //     آینه settings، فایل پنهان) → پاک‌کردن فقط یکی کافی نیست.
+    //   • آستانه تحمل ۳۰ ساعت است (زیرا مقایسه روی نیمه‌شب تاریخ انجام می‌شود،
+    //     عملاً فقط یک روز اختلاف منطقه زمانی تحمل می‌شود؛ عقب‌بردن ۲ روز = قفل).
+    //   • تشخیص عقب‌بردن → قفل کامل + ثبت «date_rollback» در audit_log تا ردپای
+    //     دستکاری در گزارش سازنده بماند.
     try {
       await ActivationService.clockGuard(state);
       await LicenseRepo.save(state);
-    } on ClockTamperedException {
+    } on ClockTamperedException catch (e) {
+      // فاز ۸ — بند ۳: ردپای حسابرسی برای عقب‌بردن تاریخ سیستم
+      await AuditRepo.log(
+          'date_rollback',
+          'تاریخ سیستم عقب‌تر از آخرین اجرا — lastSeen: ${e.lastSeen} / '
+          'اکنون: ${e.now}');
       locked = true;
       lockReason = 'تغییر تاریخ سیستم تشخیص داده شد.\n'
           'برنامه بر پایه تاریخ سیستم کار می‌کند و عقب‌بردن آن، اعتبار کد فعال‌سازی را '

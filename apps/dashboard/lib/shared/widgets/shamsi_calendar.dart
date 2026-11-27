@@ -108,7 +108,7 @@ class _ShamsiCalendarState extends State<ShamsiCalendar> {
               const Text('سال:', style: TextStyle(fontSize: 12)),
               const SizedBox(width: 4),
               SizedBox(
-                width: 62,
+                width: 54,
                 child: TextField(
                   controller: yearCtrl,
                   keyboardType: TextInputType.number,
@@ -121,11 +121,11 @@ class _ShamsiCalendarState extends State<ShamsiCalendar> {
                   },
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 6),
               const Text('ماه:', style: TextStyle(fontSize: 12)),
               const SizedBox(width: 4),
               SizedBox(
-                width: 46,
+                width: 40,
                 child: TextField(
                   controller: monthCtrl,
                   keyboardType: TextInputType.number,
@@ -138,7 +138,7 @@ class _ShamsiCalendarState extends State<ShamsiCalendar> {
                   },
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 6),
               TextButton(
                 onPressed: () => widget.onSelected(j.Jalali.now()),
                 child: const Text('امروز', style: TextStyle(fontSize: 12)),

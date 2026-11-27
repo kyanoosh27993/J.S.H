@@ -4,9 +4,10 @@ library;
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// فاز ۸ — بند ۰: مسیر پایه داده‌ها با حالت پرتابل نصب‌کننده (portable.marker)
+import '../services/install_paths.dart';
 import '../services/auth_service.dart' show AuthSeed;
 
 /// DDL کامل — جدول‌های فازهای بعدی هم از الان ساخته می‌شوند تا مهاجرت لازم نباشد.
@@ -208,8 +209,9 @@ class Db {
     if (_db != null) return _db!;
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    final dir = await getApplicationSupportDirectory();
-    final path = p.join(dir.path, 'jsh_dashboard.db');
+    // فاز ۸ — بند ۰: در حالت پرتابل، بانک در پوشه نصب ساخته می‌شود
+    final baseDir = await InstallPaths.resolveBaseDir();
+    final path = p.join(baseDir, 'jsh_dashboard.db');
     final db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(version: 1),
@@ -367,7 +369,8 @@ SELECT id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_p
   }
 
   static Future<String> dbPath() async {
-    final dir = await getApplicationSupportDirectory();
+    // فاز ۸ — بند ۰: همان منطق resolveBaseDir (پرتابل → پوشه نصب)
+    final dir = await InstallPaths.resolveBaseDir();
     return p.join(dir.path, 'jsh_dashboard.db');
   }
 

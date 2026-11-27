@@ -69,6 +69,19 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build windows --release
+      # فاز ۸ — بند ۰: نصب‌کننده Inno Setup (choco از قبل روی runner ویندوز موجود است)
+      - name: نصب Inno Setup ۶
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: ساخت نصب‌کننده (فاز ۸ — بند ۰)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "iscc" }
+          & $iscc "$env:GITHUB_WORKSPACE\installer\jsh_dashboard.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item "$env:GITHUB_WORKSPACE\installer\output\jsh-dashboard-setup-*.exe" `
+            "$env:GITHUB_WORKSPACE\" -Force
       - name: بسته‌بندی exe
         shell: pwsh
         run: |
@@ -77,7 +90,10 @@ jobs:
       - name: انتشار در Release
         uses: softprops/action-gh-release@v2
         with:
-          files: jsh-windows-x64.zip
+          # فاز ۸ — نصب‌کننده در همان Release انتشار می‌یابد
+          files: |
+            jsh-windows-x64.zip
+            jsh-dashboard-setup-*.exe
           fail_on_unmatched_files: true
 
   build-license-gen:
@@ -129,6 +145,14 @@ jobs:
       # (flutter create با وجود pubspec.yaml فقط پوشه‌های پلتفرم را می‌سازد و فایل‌های موجود را بازنویسی نمی‌کند)
       - name: تولید پلتفرم اندروید
         run: flutter create --platforms=android .
+      # فاز ۸ — بند ۲: flutter create آیکن پیش‌فرض می‌سازد؛ آیکن برند جایگزین می‌شود
+      # (منبع: assets/logo/mipmap-* — تولید با tools/make_icons.py)
+      - name: جایگزینی آیکن برند APK مولد کد
+        run: |
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp "assets/logo/mipmap-$d/ic_launcher.png" \
+               "apps/license_gen/android/app/src/main/res/mipmap-$d/ic_launcher.png"
+          done
       - run: flutter pub get
       - run: flutter build apk --release
       - name: تغییر نام APK
