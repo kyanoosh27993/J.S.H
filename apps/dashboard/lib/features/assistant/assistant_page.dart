@@ -107,6 +107,8 @@ class _AssistantPageState extends State<AssistantPage> {
                   'یادآوری‌های امروز',
                   'چقدر قابل وصول داریم؟',
                   'فروش این ماه',
+                  'سود خالص این ماه',
+                  'گزارش کامل امروز',
                 ])
                   ActionChip(
                     label: Text(q, style: const TextStyle(fontSize: 11.5)),
@@ -132,7 +134,12 @@ class _AssistantPageState extends State<AssistantPage> {
                 const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: busy ? null : _send,
-                  icon: const Icon(Icons.send, size: 18),
+                  // بند ۱۴.۸۶ — آیکن ارسال جهت‌دار است؛ در چیدمان راست‌به‌چپ
+                  // باید آینه شود تا به سمت جریان متن (چپ) اشاره کند
+                  icon: Transform.flip(
+                    flipX: true,
+                    child: const Icon(Icons.send, size: 18),
+                  ),
                   label: const Text('اجرا'),
                 ),
               ],

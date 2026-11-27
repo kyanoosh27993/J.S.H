@@ -74,26 +74,32 @@ class _ShamsiCalendarState extends State<ShamsiCalendar> {
         mainAxisSize: MainAxisSize.min,
         children: [
           // ناوبری ماه
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                tooltip: 'ماه قبل',
-                onPressed: () => _go(-1),
-              ),
-              Expanded(
-                child: Text(
-                  '${monthName(view.month)} ${toPersianDigits('${view.year}')}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          // بند ۱۴.۸۶ — فلش‌های RTL: در چیدمان راست‌به‌چپ، دکمه «ماه قبل» باید
+          // سمت راست با آیکن chevron_right باشد و «ماه بعد» سمت چپ با chevron_left.
+          // Directionality صریح تا در هر زمینه‌ای (دیالوگ، تم، جهت سیستم) چیدمان ثابت بماند.
+          Directionality(
+            textDirection: TextDirection.rtl,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  tooltip: 'ماه قبل',
+                  onPressed: () => _go(-1),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                tooltip: 'ماه بعد',
-                onPressed: () => _go(1),
-              ),
-            ],
+                Expanded(
+                  child: Text(
+                    '${monthName(view.month)} ${toPersianDigits('${view.year}')}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  tooltip: 'ماه بعد',
+                  onPressed: () => _go(1),
+                ),
+              ],
+            ),
           ),
           // ورود دستی سال و ماه
           Row(
