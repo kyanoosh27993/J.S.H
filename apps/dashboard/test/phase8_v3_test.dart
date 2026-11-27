@@ -52,11 +52,13 @@ void main() {
   });
 
   group('بند ۳ — نگهبان عقب‌بردن تاریخ سیستم', () {
-    test('last_seen_date فردا + امروز امروز → ClockTamperedException (دستکاری)',
+    test('last_seen_date ۳ روز جلوتر + امروز امروز → ClockTamperedException (دستکاری)',
         () async {
       final today = DateTime.now();
+      // بازگشت تا ۳۰ ساعت (جابه‌جایی منطقه زمانی) طبق طراحی تحمل می‌شود؛
+      // بازگشت ۳ روزه قطعاً خارج از گریس است و باید قفل شود
       final tomorrow =
-          DateTime(today.year, today.month, today.day + 1);
+          DateTime(today.year, today.month, today.day + 3);
       final state = LicenseState();
       state.lastSeenDate = tomorrow.toIso8601String();
       await SettingsRepo.set('last_seen_mirror', state.lastSeenDate);
@@ -72,10 +74,10 @@ void main() {
       final today = DateTime.now();
       final state = LicenseState();
       state.lastSeenDate = '';
-      // رکورد خالی اما آینه خارج از بانک فردا را دیده است
+      // رکورد خالی اما آینه خارج از بانک ۳ روز جلوتر را دیده است (خارج از گریس)
       await SettingsRepo.set(
           'last_seen_mirror',
-          DateTime(today.year, today.month, today.day + 1)
+          DateTime(today.year, today.month, today.day + 3)
               .toIso8601String());
       expect(
         () => ActivationService.clockGuard(state, now: today),
