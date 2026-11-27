@@ -12,7 +12,9 @@ void main() {
     expect(m1, isNotNull, reason: 'نسخه در pubspec.yaml یافت نشد');
     final pub = m1!.group(1)!;
 
-    final iss = File('../installer/jsh_dashboard.iss').readAsStringSync();
+    // از apps/dashboard دو سطح تا ریشه مخزن بالا می‌رویم
+    final iss =
+        File('../../installer/jsh_dashboard.iss').readAsStringSync();
     final m2 = RegExp(r'#define MyAppVersion "(\d+\.\d+\.\d+)"').firstMatch(iss);
     expect(m2, isNotNull, reason: 'MyAppVersion در نصب‌کننده یافت نشد');
     final issVer = m2!.group(1)!;
