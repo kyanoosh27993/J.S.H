@@ -48,8 +48,11 @@ class ReminderService {
   }
 
   static Future<TodayTask> buildTask(Ticket t) async {
-    final due = DateTime.parse(
-        '${t.dueDate.toIso8601String().substring(0, 10)}T${t.dueTime}:00');
+    // پارس امن ساعت — سفارش با «موعد نامشخص» ساعت '--:--' دارد و
+    // DateTime.parse روی آن FormatException می‌دهد (بند ۲۰ اشکالات نسخه ۳)
+    final hh = _parseHour(t.dueTime);
+    final mm = _parseMinute(t.dueTime);
+    final due = DateTime(t.dueDate.year, t.dueDate.month, t.dueDate.day, hh, mm);
     // حسابرسی (قاعده ۱۰): روزهای باقی‌مانده می‌تواند منفی باشد (موعد گذشته)
     final daysLeft = due.difference(DateTime.now()).inDays;
     final added = await addedAmount(t);

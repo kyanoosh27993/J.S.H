@@ -55,6 +55,15 @@ class _BoardPageState extends State<BoardPage> {
   }
 
   Future<void> _load() async {
+    // یک ردیف خراب نباید کل صفحه را خالی کند (بند ۲۰ نسخه ۳)
+    try {
+      await _loadData();
+    } catch (e) {
+      debugPrint('board _load error: $e');
+    }
+  }
+
+  Future<void> _loadData() async {
     final tickets = await TicketRepo.all();
     final names = <int, String>{};
     for (final u in await UserRepo.list()) {

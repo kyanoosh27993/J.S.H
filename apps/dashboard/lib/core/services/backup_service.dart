@@ -138,12 +138,20 @@ class BackupService {
   }
 
   /// بازیابی — بانک می‌بندد، فایل جایگزین و دوباره باز می‌شود
+  /// اتمیک: ابتدا در فایل موقت کپی و سپس rename — قطع وسط کار بانک را خراب نمی‌کند
   static Future<void> restoreBackup(String path) async {
     final f = File(path);
     if (!await f.exists()) throw Exception('فایل بک‌آپ یافت نشد');
     await Db.reset();
     final target = await Db.dbPath();
-    await f.copy(target);
+    final tmp = File('$target.restore_tmp');
+    await f.copy(tmp.path);
+    // حذف فایل‌های جانبی WAL/SHM تا بانک قدیمی ردپا نگذارد
+    for (final side in [File('$target-wal'), File('$target-shm')]) {
+      if (await side.exists()) await side.delete();
+    }
+    if (await File(target).exists()) await File(target).delete();
+    await tmp.rename(target);
     await Db.instance();
   }
 

@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE TABLE IF NOT EXISTS invoices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ticket_id INTEGER NOT NULL REFERENCES tickets(id),
-  number TEXT NOT NULL UNIQUE,
+  number TEXT NOT NULL,
   total INTEGER NOT NULL,
   discount INTEGER DEFAULT 0,
   paid INTEGER DEFAULT 0,
@@ -293,6 +293,56 @@ class Db {
     // شاخص واگذاری — فقط بعد از افزودن ستون‌های فاز ۲ قابل ساخت است
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_tickets_assigned ON tickets(assigned_to)');
+
+    // بند ۱۷ نسخه ۳ — فاکتورهای قدیمی kind='' دارند و در هیچ سربرگی دیده نمی‌شوند
+    // (همه فاکتورهای قبل از فاز ۵ نسخه ۲ فاکتور قطعی بودند)
+    try {
+      await db.execute(
+          "UPDATE invoices SET kind = 'final' WHERE kind = '' OR kind IS NULL");
+    } catch (_) {}
+
+    // بند ۱۷ نسخه ۳ — شماره فاکتور باید به‌ازای هر kind یکتا باشد نه سراسری،
+    // وگرنه پیش‌فاکتور و فاکتور قطعیِ یک روز با شماره یکسان کرش می‌دهند.
+    // نصب‌های قدیمی محدودیت UNIQUE(number) سراسری دارند → بازسازی جدول.
+    try {
+      final idxRows = await db.rawQuery('PRAGMA index_list(invoices)');
+      final legacy = idxRows.any((r) =>
+          r['origin'] == 'u' &&
+          r['unique'] != 0 &&
+          r['name'].toString().startsWith('sqlite_autoindex'));
+      if (legacy) {
+        final cols =
+            (await db.rawQuery('PRAGMA index_info(sqlite_autoindex_invoices_1)'))
+                .map((r) => r['name'].toString())
+                .toList();
+        if (cols.length == 1 && cols.first == 'number') {
+          await db.execute('ALTER TABLE invoices RENAME TO invoices_legacy');
+          await db.execute('''
+CREATE TABLE invoices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+  number TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  discount INTEGER DEFAULT 0,
+  paid INTEGER DEFAULT 0,
+  remaining INTEGER DEFAULT 0,
+  issued_at TEXT NOT NULL,
+  pdf_path TEXT DEFAULT '',
+  kind TEXT DEFAULT 'pre',
+  status TEXT DEFAULT '',
+  cancelled_at TEXT,
+  cancel_reason TEXT DEFAULT '',
+  note TEXT DEFAULT ''
+)''');
+          await db.execute('''
+INSERT INTO invoices (id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_path, kind, status, cancelled_at, cancel_reason, note)
+SELECT id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_path, kind, status, cancelled_at, cancel_reason, note FROM invoices_legacy''');
+          await db.execute('DROP TABLE invoices_legacy');
+        }
+      }
+      await db.execute(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_number_kind ON invoices(number, kind)');
+    } catch (_) {}
   }
 
   static Future<String> dbPath() async {

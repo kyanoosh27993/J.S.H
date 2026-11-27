@@ -50,6 +50,15 @@ class _InvoicesPageState extends State<InvoicesPage> {
   }
 
   Future<void> _load() async {
+    // یک ردیف خراب نباید کل صفحه را خالی کند (بند ۲۰ نسخه ۳)
+    try {
+      await _loadData();
+    } catch (e) {
+      debugPrint('invoices _load error: $e');
+    }
+  }
+
+  Future<void> _loadData() async {
     final db = await Db.instance();
     final invRows = await db.query('invoices', orderBy: 'id DESC');
     final cNames = await CustomerRepo.nameMap();

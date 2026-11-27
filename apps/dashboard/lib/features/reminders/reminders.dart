@@ -34,6 +34,15 @@ class _RemindersPageState extends State<RemindersPage> {
   }
 
   Future<void> _load() async {
+    // یک ردیف خراب نباید کل صفحه را خالی کند (بند ۲۰ نسخه ۳)
+    try {
+      await _loadData();
+    } catch (e) {
+      debugPrint('reminders _load error: $e');
+    }
+  }
+
+  Future<void> _loadData() async {
     final (lead, _) = await ReminderService.loadPrefs();
     final now = DateTime.now();
     final due = await TicketRepo.dueBetween(now, now.add(Duration(days: lead)));

@@ -391,7 +391,8 @@ class _UserEditDialogState extends State<_UserEditDialog> {
       err = createErr;
     }
     if (!mounted) return;
-    if (err != null) {
+    // UserRepo.create موفقیت را با '' برمی‌گرداند — فقط متن واقعی خطا نمایش داده شود
+    if (err != null && err.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(err),
         backgroundColor: Colors.red,

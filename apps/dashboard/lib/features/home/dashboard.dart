@@ -44,6 +44,15 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _load() async {
+    // یک ردیف خراب نباید کل صفحه را خالی کند (بند ۲۰ نسخه ۳)
+    try {
+      await _loadData();
+    } catch (e) {
+      debugPrint('dashboard _load error: $e');
+    }
+  }
+
+  Future<void> _loadData() async {
     final tickets = await TicketRepo.all();
     final itemSums = await TicketItemRepo.sumsForAllTickets();
     final paidSums = await PaymentRepo.paidSumForAll();

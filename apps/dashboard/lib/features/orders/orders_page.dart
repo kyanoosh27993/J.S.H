@@ -36,6 +36,15 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 
   Future<void> _load() async {
+    // یک ردیف خراب نباید کل صفحه را خالی کند (بند ۲۰ نسخه ۳)
+    try {
+      await _loadData();
+    } catch (e) {
+      debugPrint('orders _load error: $e');
+    }
+  }
+
+  Future<void> _loadData() async {
     final ts = await TicketRepo.all();
     final cNames = await CustomerRepo.nameMap();
     final invoices = await InvoiceRepo.allByTicketMap();
