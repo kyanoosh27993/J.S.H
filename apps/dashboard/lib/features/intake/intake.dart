@@ -326,7 +326,8 @@ class _IntakePageState extends State<IntakePage> {
                     : () async {
                         setDState(() => generating = true);
                         try {
-                          final path = await A5ReceiptService.build(
+                          // بند ۱.۱۴ — ساخت بایت‌ها و پرسیدن محل ذخیره از کاربر
+                          final bytes = await A5ReceiptService.buildBytes(
                             shop: shop,
                             ticket: ticket,
                             customer: customer,
@@ -336,7 +337,22 @@ class _IntakePageState extends State<IntakePage> {
                             withLogo: withLogo,
                             withStamp: withStamp,
                             withSignature: withSignature,
+                            // فقط متعلقات تیک‌خورده روی فرم علامت می‌خورند (بند ۱.۱۸)
+                            selectedAccessories: accessories.toList(),
                           );
+                          final path = await A5ReceiptService.saveToUserPath(
+                              bytes, '${ticket.code}-A5.pdf');
+                          if (path == null) {
+                            // کاربر انصراف داد — فایل نوشته نمی‌شود
+                            setDState(() => generating = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                                content:
+                                    Text('ذخیره PDF لغو شد — فایلی ذخیره نشد.'),
+                              ));
+                            }
+                            return;
+                          }
                           setDState(() {
                             savedPath = path;
                             generating = false;

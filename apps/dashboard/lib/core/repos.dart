@@ -500,7 +500,8 @@ class TicketItemRepo {
   static Future<Map<int, int>> sumsForAllTickets() async {
     final db = await Db.instance();
     final rows = await db.rawQuery(
-        'SELECT ticket_id, COALESCE(SUM(price * qty), 0) AS s FROM ticket_items GROUP BY ticket_id');
+        "SELECT ticket_id, COALESCE(SUM(price * qty), 0) AS s FROM ticket_items "
+        "WHERE COALESCE(item_type, '') != 'damage' GROUP BY ticket_id");
     return {
       for (final r in rows) (r['ticket_id'] as int): (r['s'] as int),
     };
@@ -649,15 +650,24 @@ class InvoiceRepo {
   }
 
   /// ساخت فاکتور از سفارش — پیش‌فاکتور یا قطعی
+  /// فاز ۵b (بند ۱۲): پارامترهای اختیاری هزینه/تخفیف/خسارت + کاربر خسارت‌زننده
+  /// و یادداشت سود — برای فاکتور قطعی از دیالوگ «صدور سند» پر می‌شود.
   static Future<int> createFromTicket({
     required Ticket ticket,
     required String kind,
     int discount = 0,
     String note = '',
+    int? cost,
+    int? damage,
+    int? damageUserId,
+    String? profitNote,
   }) async {
     final db = await Db.instance();
     final items = await TicketItemRepo.byTicket(ticket.id!);
-    final sum = items.fold<int>(0, (s, i) => s + i.price * i.qty);
+    // قلم «خسارت» اطلاعاتی است و در جمع حساب نمی‌شود (بند ۱۰.۶۹)
+    final sum = items
+        .where((i) => i.countsInTotal)
+        .fold<int>(0, (s, i) => s + i.price * i.qty);
     final total = sum > 0 ? sum : ticket.estimateAmount;
     final paid = await PaymentRepo.paidSum(ticket.id!);
     final existing = await db.query('invoices',
@@ -667,12 +677,22 @@ class InvoiceRepo {
     if (existing.isNotEmpty) {
       // فاز ۵ — سند موجود به‌روز می‌شود (جمع/پرداخت/مانده) نه تکراری
       final id = existing.first['id'] as int;
-      final disc = (existing.first['discount'] ?? 0) as int;
-      await db.update('invoices', {
+      final disc = discount > 0 ? discount : (existing.first['discount'] ?? 0) as int;
+      final upd = <String, Object?>{
         'total': total,
         'paid': paid,
         'remaining': (total - disc) - paid,
-      }, where: 'id = ?', whereArgs: [id]);
+      };
+      if (cost != null) upd['cost'] = cost;
+      if (damage != null) {
+        upd['damage'] = damage;
+        if (damageUserId != null) upd['damage_user'] = damageUserId;
+      }
+      if (profitNote != null && profitNote.isNotEmpty) {
+        upd['profit_note'] = profitNote;
+      }
+      upd['updated_at'] = DateTime.now().toIso8601String();
+      await db.update('invoices', upd, where: 'id = ?', whereArgs: [id]);
       return id;
     }
     final number = await nextNumber(kind);
@@ -690,10 +710,65 @@ class InvoiceRepo {
       'cancelled_at': '',
       'cancel_reason': '',
       'note': note,
+      'cost': cost ?? 0,
+      'damage': damage ?? 0,
+      if (damageUserId != null) 'damage_user': damageUserId,
+      'profit_note': profitNote ?? '',
+      'updated_at': DateTime.now().toIso8601String(),
     });
     await AuditRepo.log('invoice_create',
         'ساخت ${kind == kindPre ? 'پیش‌فاکتور' : 'فاکتور'} $number برای سفارش #${ticket.id}');
     return id;
+  }
+
+  /// سود خالص فاکتور (بند ۱۲) — جمع منهای تخفیف، هزینه و خسارت
+  static int netProfitOf(Map<String, Object?> inv) =>
+      ((inv['total'] ?? 0) as int) -
+      ((inv['discount'] ?? 0) as int) -
+      ((inv['cost'] ?? 0) as int) -
+      ((inv['damage'] ?? 0) as int);
+
+  /// اصلاح مبالغ فاکتور — بند ۱۲: هر تغییر با لاگ قدیمی/جدید برای مدیر سیستم
+  static Future<void> updateFinancials(
+    int id, {
+    required int cost,
+    required int discount,
+    required int damage,
+    int? damageUserId,
+    String profitNote = '',
+    int userId = 0,
+  }) async {
+    final db = await Db.instance();
+    final rows =
+        await db.query('invoices', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return;
+    final r = rows.first;
+    final total = (r['total'] ?? 0) as int;
+    final paid = (r['paid'] ?? 0) as int;
+    final oldCost = (r['cost'] ?? 0) as int;
+    final oldDiscount = (r['discount'] ?? 0) as int;
+    final oldDamage = (r['damage'] ?? 0) as int;
+    await db.update('invoices', {
+      'cost': cost,
+      'discount': discount,
+      'damage': damage,
+      if (damageUserId != null) 'damage_user': damageUserId,
+      'profit_note': profitNote,
+      'remaining': (total - discount) - paid,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [id]);
+    await AuditRepo.log('invoice_cost_edit',
+        'فاکتور #$id — قبلی: هزینه $oldCost، تخفیف $oldDiscount، خسارت $oldDamage / '
+        'جدید: هزینه $cost، تخفیف $discount، خسارت $damage — کاربر #$userId');
+  }
+
+  /// فقط فاکتورهای فعال (غیر ابطالی) به‌ازای هر سفارش — بند ۲۳:
+  /// فاکتور ابطالی نباید در صندوق/تسویه دیده شود.
+  static Future<Map<int, Map<String, Object?>>> activeByTicketMap() async {
+    final db = await Db.instance();
+    final rows = await db.query('invoices',
+        where: "COALESCE(status, '') != 'cancelled'", orderBy: 'id DESC');
+    return {for (final r in rows) (r['ticket_id'] as int): r};
   }
 
   /// ابطال — هیچ فاکتوری حذف نمی‌شود (بند ۱۳)
@@ -720,13 +795,33 @@ class InvoiceRepo {
   }
 
   /// حذف کامل — فقط مدیر اصلی برنامه (بند ۱۳)
+  /// همه ردپاهای سفارش مرتبط هم پاک می‌شوند: قلم‌ها، پرداخت‌ها، یادآورها،
+  /// گارانتی‌ها، تاریخچه وضعیت و عکس‌های اتچ‌شده (بند ۲۳ — حذف کامل).
   static Future<String?> deleteFully(int id, {AuthUser? actor}) async {
     if (actor == null || !(actor.isAdmin)) {
       return 'حذف کامل فاکتور فقط توسط مدیر اصلی مجاز است';
     }
     final db = await Db.instance();
+    final rows =
+        await db.query('invoices', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    final ticketId = (rows.first['ticket_id'] ?? 0) as int;
+    final items = await db.query('ticket_items',
+        columns: ['id'], where: 'ticket_id = ?', whereArgs: [ticketId]);
+    for (final it in items) {
+      await db.delete('warranties',
+          where: 'ticket_item_id = ?', whereArgs: [it['id']]);
+    }
+    await db.delete('warranty_records', where: 'ticket_id = ?', whereArgs: [ticketId]);
+    await db.delete('attachments', where: 'ticket_id = ?', whereArgs: [ticketId]);
+    await db.delete('reminders', where: 'ticket_id = ?', whereArgs: [ticketId]);
+    await db.delete('ticket_status_log',
+        where: 'ticket_id = ?', whereArgs: [ticketId]);
+    await db.delete('ticket_items', where: 'ticket_id = ?', whereArgs: [ticketId]);
+    await db.delete('payments', where: 'ticket_id = ?', whereArgs: [ticketId]);
     await db.delete('invoices', where: 'id = ?', whereArgs: [id]);
-    await AuditRepo.log('invoice_delete', 'حذف کامل فاکتور #$id — توسط ${actor.username}');
+    await AuditRepo.log('invoice_delete',
+        'حذف کامل فاکتور #$id و همه اثرهای سفارش #$ticketId — توسط ${actor.username}');
     return null;
   }
 
@@ -738,7 +833,10 @@ class InvoiceRepo {
     final ticket = await TicketRepo.byId(ticketId);
     if (ticket == null) return;
     final items = await TicketItemRepo.byTicket(ticketId);
-    final sum = items.fold<int>(0, (s, i) => s + i.price * i.qty);
+    // قلم «خسارت» در جمع حساب نمی‌شود (بند ۱۰.۶۹)
+    final sum = items
+        .where((i) => i.countsInTotal)
+        .fold<int>(0, (s, i) => s + i.price * i.qty);
     final total = sum > 0 ? sum : ticket.estimateAmount;
     final paid = await PaymentRepo.paidSum(ticketId);
     for (final r in rows) {
@@ -801,6 +899,14 @@ class InvoiceRepo {
       WHERE i.number LIKE ? OR t.code LIKE ?
       ORDER BY i.id DESC LIMIT 1
     ''', [like, like]);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// آخرین سند یک سفارش — برای نمایش QR در صفحه جزئیات (بند ۱۰.۶۷)
+  static Future<Map<String, Object?>?> mainForTicket(int ticketId) async {
+    final db = await Db.instance();
+    final rows = await db.query('invoices',
+        where: 'ticket_id = ?', whereArgs: [ticketId], limit: 1);
     return rows.isEmpty ? null : rows.first;
   }
 }

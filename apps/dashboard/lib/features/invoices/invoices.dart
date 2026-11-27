@@ -14,6 +14,7 @@ import '../../core/utils.dart';
 import '../../shared/widgets/app_text.dart';
 import '../../shared/widgets/data_table_pro.dart';
 import '../../shared/widgets/qr_box.dart';
+import '../orders/orders_page.dart' show printTicketReceipt, showFinancialsDialog;
 import '../tickets/ticket_detail.dart';
 
 class _InvoiceRow {
@@ -28,6 +29,10 @@ class _InvoiceRow {
   int get total => (inv['total'] ?? 0) as int;
   int get discount => (inv['discount'] ?? 0) as int;
   int get paid => (inv['paid'] ?? 0) as int;
+  // فاز ۵b (بند ۱۲) — هزینه/خسارت و سود خالص
+  int get cost => (inv['cost'] ?? 0) as int;
+  int get damage => (inv['damage'] ?? 0) as int;
+  int get netProfit => InvoiceRepo.netProfitOf(inv);
   int get remaining => total - discount - paid;
   bool get cancelled => status == 'cancelled';
 }
@@ -158,6 +163,117 @@ class _InvoicesPageState extends State<InvoicesPage> {
     _load();
   }
 
+  /// اصلاح مبالغ فاکتور قطعی — بند ۱۲ (با لاگ قدیمی/جدید برای مدیر سیستم)
+  Future<void> _editFinancials(_InvoiceRow r) async {
+    final me = AppSession.I.currentUser;
+    if (!me!.can('action.invoice.edit')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('دسترسی اصلاح مبالغ برای شما مجاز نیست'),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    final fin = await showFinancialsDialog(
+      context,
+      cost: r.cost,
+      discount: r.discount,
+      damage: r.damage,
+      damageUserId: r.inv['damage_user'] as int?,
+      note: (r.inv['profit_note'] ?? '') as String,
+    );
+    if (fin == null) return;
+    await InvoiceRepo.updateFinancials(
+      r.id,
+      cost: fin.cost,
+      discount: fin.discount,
+      damage: fin.damage,
+      damageUserId: fin.damageUserId,
+      profitNote: fin.note,
+      userId: me.id,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('مبالغ اصلاح شد و در لاگ مدیر ثبت گردید'),
+    ));
+    _load();
+  }
+
+  /// چاپ/PDF — بند ۱۰.۷۱: اگر فاکتور pdf_path ثبت‌شده دارد همان معرفی می‌شود،
+  /// وگرنه رسید سه‌برگی سفارش ساخته می‌شود.
+  Future<void> _print(_InvoiceRow r) async {
+    final pdfPath = ((r.inv['pdf_path'] ?? '') as String).trim();
+    if (pdfPath.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('PDF ثبت‌شده سند: ${toPersianDigits(pdfPath)}')));
+      return;
+    }
+    await printTicketReceipt(context, r.ticket);
+  }
+
+  /// نوار خلاصه هر سربرگ — بند ۱۲ (سود خالص) و بند ۲۳.۱۲۷ (خلاصه ابطالی‌ها)
+  Widget _summaryBar(List<_InvoiceRow> list, {required bool cancelledTab}) {
+    if (list.isEmpty) return const SizedBox.shrink();
+    final chipStyle = TextStyle(
+        fontSize: 11.5, color: Theme.of(context).colorScheme.onSurfaceVariant);
+    if (cancelledTab) {
+      // بند ۲۳ — شمارش و جمع اسناد ابطالی به تفکیک پیش‌فاکتور/فاکتور
+      final pre = list.where((r) => r.kind == InvoiceRepo.kindPre).toList();
+      final fin =
+          list.where((r) => r.kind == InvoiceRepo.kindFinal).toList();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            Chip(
+              label: Text(
+                'پیش‌فاکتور ابطالی: ${toPersianDigits('${pre.length}')} سند — ${money(pre.fold<int>(0, (s, r) => s + r.total))} تومان',
+                style: chipStyle,
+              ),
+            ),
+            Chip(
+              label: Text(
+                'فاکتور ابطالی: ${toPersianDigits('${fin.length}')} سند — ${money(fin.fold<int>(0, (s, r) => s + r.total))} تومان',
+                style: chipStyle,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final sumTotal = list.fold<int>(0, (s, r) => s + r.total);
+    final sumDiscount = list.fold<int>(0, (s, r) => s + r.discount);
+    final sumRemaining = list.fold<int>(0, (s, r) => s + r.remaining);
+    final sumNet = list.fold<int>(0, (s, r) => s + r.netProfit);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          Chip(
+              label: Text(
+                  'تعداد: ${toPersianDigits('${list.length}')}', style: chipStyle)),
+          Chip(
+              label: Text('جمع: ${money(sumTotal)} تومان', style: chipStyle)),
+          Chip(
+              label: Text('تخفیف: ${money(sumDiscount)} تومان',
+                  style: chipStyle)),
+          Chip(
+              label: Text('مانده: ${money(sumRemaining)} تومان',
+                  style: chipStyle)),
+          Chip(
+              label: Text('سود خالص: ${money(sumNet)} تومان',
+                  style: chipStyle),
+              backgroundColor:
+                  Theme.of(context).colorScheme.secondaryContainer),
+        ],
+      ),
+    );
+  }
+
   Future<String?> _reasonDialog(String title) async {
     final ctrl = TextEditingController();
     return showDialog<String>(
@@ -233,15 +349,25 @@ class _InvoicesPageState extends State<InvoicesPage> {
                 child: loading
                     ? const Center(child: CircularProgressIndicator())
                     : TabBarView(children: [
-                        _table(pre, 'invoices_pre'),
-                        _table(fin, 'invoices_final'),
-                        _table(cancelled, 'invoices_cancelled'),
+                        _tab(pre, 'invoices_pre'),
+                        _tab(fin, 'invoices_final'),
+                        _tab(cancelled, 'invoices_cancelled', cancelled: true),
                       ]),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _tab(List<_InvoiceRow> list, String tableId,
+      {bool cancelled = false}) {
+    return Column(
+      children: [
+        _summaryBar(list, cancelledTab: cancelled),
+        Expanded(child: _table(list, tableId)),
+      ],
     );
   }
 
@@ -302,6 +428,13 @@ class _InvoicesPageState extends State<InvoicesPage> {
             numeric: (r) => r.remaining,
             width: 120,
           ),
+          // فاز ۵b (بند ۱۲) — سود خالص: جمع منهای تخفیف، هزینه و خسارت
+          ProColumn<_InvoiceRow>(
+            label: 'سود خالص',
+            display: (r) => money(r.netProfit),
+            numeric: (r) => r.netProfit,
+            width: 120,
+          ),
           ProColumn<_InvoiceRow>(
             label: 'QR',
             display: (r) => '',
@@ -318,13 +451,26 @@ class _InvoicesPageState extends State<InvoicesPage> {
           spacing: 4,
           children: [
             QrBox(data: '${r.ticket.code} ${r.number}', size: 60),
-            if (!isCancelledTab)
+            // بند ۱۰.۷۱ — چاپ/PDF از لیست فاکتورها
+            IconButton(
+              tooltip: 'چاپ/PDF',
+              icon: const Icon(Icons.picture_as_pdf, size: 18),
+              onPressed: () => _print(r),
+            ),
+            if (!isCancelledTab) ...[
+              // بند ۱۲ — اصلاح مبالغ فاکتور قطعی (لاگ برای مدیر سیستم)
+              if (r.kind == InvoiceRepo.kindFinal)
+                IconButton(
+                  tooltip: 'اصلاح مبالغ (هزینه/تخفیف/خسارت)',
+                  icon: const Icon(Icons.edit_note, color: Colors.teal),
+                  onPressed: () => _editFinancials(r),
+                ),
               IconButton(
                 tooltip: 'ابطال (انتقال به ابطال‌شده‌ها)',
                 icon: const Icon(Icons.block, color: Colors.orange),
                 onPressed: () => _cancel(r),
               )
-            else ...[
+            ] else ...[
               IconButton(
                 tooltip: 'بازگردانی از ابطال',
                 icon: const Icon(Icons.restore, color: Colors.green),

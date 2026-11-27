@@ -14,17 +14,27 @@ class ChartPoint {
   const ChartPoint(this.label, this.value);
 }
 
+/// جمع مقادیر همه نقاط — کمک‌تابع برای مرکز دونات و تست‌ها (فاز ۴)
+double donutTotal(List<ChartPoint> points) =>
+    points.fold<double>(0, (s, e) => s + e.value);
+
 /// ── نمودار دایره‌ای (دونات) ──
 class DonutChart extends StatefulWidget {
   final List<ChartPoint> points;
   final String centerLabel;
   final double size;
 
+  /// فاز ۴ — تعامل: تپ روی هر قطاع / مرکز / راهنما
+  final ValueChanged<String>? onSegmentTap;
+  final VoidCallback? onCenterTap;
+
   const DonutChart({
     super.key,
     required this.points,
     required this.centerLabel,
     this.size = 220,
+    this.onSegmentTap,
+    this.onCenterTap,
   });
 
   @override
@@ -39,8 +49,7 @@ class _DonutChartState extends State<DonutChart> {
     final cfg = AppThemeScope.of(context);
     final p = cfg.palette;
     final colors = p.chartColors;
-    final total =
-        widget.points.fold<double>(0, (s, e) => s + e.value);
+    final total = donutTotal(widget.points);
     if (total <= 0) {
       return SizedBox(
         height: widget.size,
@@ -56,7 +65,18 @@ class _DonutChartState extends State<DonutChart> {
               setState(() => hovered = _segmentAt(e.localPosition, total));
             },
             onExit: (_) => setState(() => hovered = -1),
-            child: TweenAnimationBuilder<double>(
+            // فاز ۴ — تپ روی قطاع‌ها و مرکز دونات
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (d) {
+                final hit = _tapTarget(d.localPosition, total);
+                if (hit == -1) {
+                  widget.onCenterTap?.call();
+                } else if (hit >= 0) {
+                  widget.onSegmentTap?.call(widget.points[hit].label);
+                }
+              },
+              child: TweenAnimationBuilder<double>(
               tween: Tween(begin: 0, end: 1),
               duration: Duration(milliseconds: cfg.animations ? 700 : 0),
               curve: Curves.easeOutCubic,
@@ -77,6 +97,7 @@ class _DonutChartState extends State<DonutChart> {
                   ),
                 ),
               ),
+            ),
             ),
           ),
           const SizedBox(height: 10),
@@ -117,6 +138,18 @@ class _DonutChartState extends State<DonutChart> {
     return -1;
   }
 
+  /// فاز ۴ — تشخیص هدف تپ: قطاع (>=0)، مرکز (-1)، بیرون حلقه (-2)
+  int _tapTarget(Offset local, double total) {
+    final c = Offset(widget.size / 2, widget.size / 2);
+    final v = local - c;
+    if (v.distance < widget.size * 0.24) return -1; // مرکز دونات
+    // شعاع بیرونی حلقه = شعاع ترسیم + نصف ضخامت + تلورانس لمس
+    final outer =
+        widget.size * 0.42 + widget.size * 0.18 / 2 + 10;
+    if (v.distance > outer) return -2;
+    return _segmentAt(local, total);
+  }
+
   static double _angleOf(Offset v) {
     var a = v.direction; // -pi..pi با 0 در راست
     if (a < -1.5707963) a += 6.2831853; // یکسان‌سازی با ترسیم ساعتگرد از بالا
@@ -131,7 +164,11 @@ class _DonutChartState extends State<DonutChart> {
     return MouseRegion(
       onEnter: (_) => onEnter(),
       onExit: (_) => onExit(),
-      child: AnimatedContainer(
+      // فاز ۴ — راهنما هم تپ‌پذیر است و همان callback قطاع را صدا می‌زند
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => widget.onSegmentTap?.call(pt.label),
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
@@ -153,6 +190,7 @@ class _DonutChartState extends State<DonutChart> {
             AppNumText('${toPersianDigits(pct)}٪',
                 style: TextStyle(fontSize: 11.5, color: color)),
           ],
+        ),
         ),
       ),
     );
@@ -212,9 +250,10 @@ class _DonutPainter extends CustomPainter {
     )..layout();
     tp.paint(canvas, c - Offset(tp.width / 2, tp.height + 6));
     final shown = hovered >= 0 ? points[hovered] : null;
+    // فاز ۴ — مرکز دونات باید جمع مقادیر باشد نه تعداد قطاع‌ها
     final valueText = shown != null
         ? money(shown.value.round())
-        : toPersianDigits('${points.length}');
+        : money(total.round());
     final tp2 = TextPainter(
       text: TextSpan(
           text: valueText,

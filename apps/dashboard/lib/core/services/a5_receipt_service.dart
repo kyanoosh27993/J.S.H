@@ -1,16 +1,21 @@
-/// فرم رسید سه‌برگی A5 — فاز ۴ (بند ۱۰ + بند ۶ جدید)
-/// مطابق فرم کاغذی فروشگاه: برگ مشتری، برگ فروشگاه (با جدول اقلام) و برگ بایگانی.
-/// - لوگو/نام فروشگاه در سربرگ؛ مهر/امضا/لوگو به انتخاب کاربر (بند ۶)
-/// - متن تعهدات justify و RTL؛ پترن قفل به‌جای امضا (بند ۷)
-/// - اعلام «مبلغ ممکن است بعد از بررسی دستگاه اضافه شود» (بند ۱۰)
-/// - اگر تاریخ تحویل ثبت نشده باشد: «تاریخ تحویل بعد از بررسی دستگاه به مشتری اعلام می گردد»
+/// فرم رسید سه‌برگی A5 — فاز ۵a (بند ۱ + ۱.۱۶ + ۱.۱۷ + ۱.۱۸ + ۱.۱۹)
+/// بازسازی کامل مطابق فرم کاغذی واقعی فروشگاه:
+///   برگ ۱) برگ مشتری  — سربرگ + فیلدها + اقرارنامه + متعلقات انتخابی + امضاء
+///   برگ ۲) برگ فروشگاه — جدول ردیف/عیوب و قطعات تعویض‌شده/مبلغ با ۵ ردیف شماره‌دار
+///         + «جمع بحروف ریال» + تلفن مشتری + کد حفاظتی (پترن قفل) + QR کد رسید
+///   برگ ۳) برگ بایگانی — فرم «اقلام تحویل داده شده به مشتری» (بند ۱.۱۶/۱.۱۷)
+/// نکات:
+/// - مقادیر سربرگ فقط از تنظیمات فروشگاه (نام/آدرس/تلفن) — بدون مقدار ثابت
+/// - اقلام جدول فقط از اقلام واقعی سفارش پر می‌شود؛ ردیف‌های خالی فقط شماره دارند (بند ۱.۱۸)
+/// - مبالغ سفارش (برآورد/بیعانه/اقلام) در برگ فروشگاه نمایش داده می‌شود (بند ۱.۱۹)
+/// - مربع‌های تیک متعلقات برای همه چاپ می‌شوند و فقط انتخاب‌شده‌ها علامت می‌خورند
 library;
 
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -24,9 +29,10 @@ class A5ReceiptService {
   static pw.Font get regular => PdfService.regularFont;
   static pw.Font get bold => PdfService.boldFont;
 
-  /// ساخت PDF سه‌برگی — خروجی مسیر فایل
-  /// [sheets] = (برگ مشتری، برگ فروشگاه، برگ بایگانی)
+  /// ساخت PDF سه‌برگی — خروجی مسیر فایل (مسیر پیش‌فرض اسناد برنامه)
+  /// [sheets] = (برگ مشتری، برگ فروشگاه، برگ بایگانی) — سازگار با فراخوانی‌های قبلی
   /// [withStamp/withSignature/withLogo] = انتخاب کاربر برای تصاویر فروشگاه (بند ۶)
+  /// [selectedAccessories] = متعلقات تیک‌خورده در فرم پذیرش؛ اگر null باشد از ticket
   static Future<String> build({
     required Map<String, String> shop,
     required Ticket ticket,
@@ -37,6 +43,38 @@ class A5ReceiptService {
     bool withStamp = true,
     bool withSignature = true,
     bool withLogo = true,
+    List<String>? selectedAccessories,
+  }) async {
+    final bytes = await buildBytes(
+      shop: shop,
+      ticket: ticket,
+      customer: customer,
+      device: device,
+      items: items,
+      sheets: sheets,
+      withStamp: withStamp,
+      withSignature: withSignature,
+      withLogo: withLogo,
+      selectedAccessories: selectedAccessories,
+    );
+    final dir = await PdfService.receiptsDir();
+    final path = p.join(dir, '${ticket.code}-A5.pdf');
+    await File(path).writeAsBytes(bytes);
+    return path;
+  }
+
+  /// ساخت بایت‌های PDF بدون نوشتن فایل — برای دیالوگ «ذخیره در محل دلخواه» (بند ۱.۱۴)
+  static Future<Uint8List> buildBytes({
+    required Map<String, String> shop,
+    required Ticket ticket,
+    required Customer customer,
+    required Device device,
+    required List<TicketItem> items,
+    required (bool, bool, bool) sheets,
+    bool withStamp = true,
+    bool withSignature = true,
+    bool withLogo = true,
+    List<String>? selectedAccessories,
   }) async {
     await PdfService.ensureFonts();
     final doc = pw.Document();
@@ -44,8 +82,11 @@ class A5ReceiptService {
     final stampBytes = withStamp ? await ShopSettingsService.bytesOf(ShopImage.stamp) : null;
     final sigBytes =
         withSignature ? await ShopSettingsService.bytesOf(ShopImage.signature) : null;
-    final accessories = await ShopSettingsService.loadAccessories();
+    final allAccessories = await ShopSettingsService.loadAccessories();
+    // متعلقات انتخاب‌شده — بند ۱۰: فقط تیک‌خورده‌ها علامت می‌خورند
+    final selected = selectedAccessories ?? ticket.accessories;
     final remaining = ticket.estimateAmount - ticket.depositAmount;
+    final totalItems = items.fold<int>(0, (s, i) => s + i.price * i.qty);
 
     pw.Widget? img(List<int>? bytes, {double w = 60}) {
       if (bytes == null) return null;
@@ -57,9 +98,31 @@ class A5ReceiptService {
       }
     }
 
-    // ── سربرگ مشترک ──
-    pw.Widget header() => pw.Column(children: [
+    // ── کد QR رسید — فقط کد تیکت (مطابق qr_box.dart اما بدون شماره فاکتور) ──
+    pw.Widget qrBox({double size = 44}) {
+      if (ticket.code.isEmpty) return pw.SizedBox();
+      try {
+        final qr = pw.QrCode.fromData(data: ticket.code);
+        return pw.Container(
+          padding: const pw.EdgeInsets.all(2),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.grey500, width: 0.6),
+          ),
+          child: pw.QrImageView(
+            qrCode: qr,
+            size: size,
+            padding: const pw.EdgeInsets.zero,
+          ),
+        );
+      } catch (_) {
+        return pw.SizedBox();
+      }
+    }
+
+    // ── سربرگ مشترک — فقط از تنظیمات فروشگاه (بند ۱) ──
+    pw.Widget header({bool compact = false}) => pw.Column(children: [
           pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Expanded(
@@ -67,17 +130,23 @@ class A5ReceiptService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(shop['name'] ?? '',
-                        style: pw.TextStyle(font: bold, fontSize: 15)),
-                    pw.Text(
-                        'آدرس: ${shop['address'] ?? ''}  —  تلفن: ${toPersianDigits(shop['phone'] ?? '')}',
-                        style: pw.TextStyle(font: regular, fontSize: 8)),
-                    pw.Text(
-                        'تلفن: ${toPersianDigits(shop['phone'] ?? '')}',
-                        style: pw.TextStyle(font: regular, fontSize: 8)),
+                        style: pw.TextStyle(font: bold, fontSize: compact ? 11 : 14)),
+                    if ((shop['address'] ?? '').isNotEmpty)
+                      pw.Text('آدرس: ${shop['address']}',
+                          style: pw.TextStyle(font: regular, fontSize: 7.5)),
+                    // دو خط تلفن — «همراه» فقط اگر در تنظیمات باشد، وگرنه یک خط «تلفن»
+                    if ((shop['mobile'] ?? '').isNotEmpty)
+                      pw.Text('همراه: ${toPersianDigits(shop['mobile']!)}',
+                          style: pw.TextStyle(font: regular, fontSize: 7.5)),
+                    if ((shop['phone'] ?? '').isNotEmpty)
+                      pw.Text('تلفن: ${toPersianDigits(shop['phone']!)}',
+                          style: pw.TextStyle(font: regular, fontSize: 7.5)),
                   ],
                 ),
               ),
-              if (logoBytes != null) img(logoBytes, w: 52)!,
+              pw.SizedBox(width: 6),
+              if (logoBytes != null) img(logoBytes, w: compact ? 34 : 48)!,
+              qrBox(size: compact ? 34 : 44),
             ],
           ),
           pw.Divider(color: PdfColors.grey600, height: 6),
@@ -115,7 +184,51 @@ class A5ReceiptService {
           ),
         );
 
-    // تعهدات — justify و RTL (بند ۱۰)
+    // دو فیلد در یک سطر — مطابق چیدمان فرم کاغذی
+    pw.Widget fieldPair(String l1, String v1, String l2, String v2) => pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Expanded(child: field(l1, v1)),
+            pw.SizedBox(width: 10),
+            pw.Expanded(child: field(l2, v2)),
+          ],
+        );
+
+    // مربع تیک متعلقات — همه با مربع، فقط انتخاب‌شده‌ها علامت (✓ جایگزین؟ فونت فارسی
+    // از ✓ پشتیبانی می‌کند؛ برای اطمینان با ضربدر پرشده داخلی رندر می‌شود)
+    pw.Widget checkbox(String label, {required bool checked}) => pw.Row(
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            pw.Container(
+              width: 9,
+              height: 9,
+              alignment: pw.Alignment.center,
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey700, width: 0.8),
+              ),
+              child: checked
+                  ? pw.Container(color: PdfColors.grey800)
+              : null,
+            ),
+            pw.SizedBox(width: 3),
+            pw.Text(label, style: pw.TextStyle(font: regular, fontSize: 8.4)),
+          ],
+        );
+
+    pw.Widget accessoriesWrap({required bool onlySelected}) {
+      final list = onlySelected
+          ? allAccessories.where((a) => selected.contains(a)).toList()
+          : allAccessories;
+      if (list.isEmpty) {
+        return pw.Text('ثبت نشده',
+            style: pw.TextStyle(font: regular, fontSize: 8.4));
+      }
+      return pw.Wrap(spacing: 10, runSpacing: 3, children: [
+        for (final a in list) checkbox(a, checked: selected.contains(a)),
+      ]);
+    }
+
+    // متن اقرارنامه — همان منطق فرم پذیرش (terms در intake)
     pw.Widget pledges() => pw.Container(
           padding: const pw.EdgeInsets.all(7),
           decoration: pw.BoxDecoration(
@@ -162,37 +275,6 @@ class A5ReceiptService {
               pw.Text('این مبلغ ممکن است بعد از بررسی دستگاه اضافه شود.',
                   style: pw.TextStyle(font: regular, fontSize: 8,
                       color: PdfColors.red700)),
-              pw.SizedBox(height: 4),
-              // لوازم همراه با مربع تیک — بند ۱۰
-              pw.Wrap(
-                spacing: 10,
-                children: [
-                  for (final a in accessories)
-                    pw.Row(mainAxisSize: pw.MainAxisSize.min, children: [
-                      pw.Container(
-                        width: 9,
-                        height: 9,
-                        decoration: pw.BoxDecoration(
-                          border: pw.Border.all(color: PdfColors.grey700, width: 0.8),
-                        ),
-                      ),
-                      pw.SizedBox(width: 3),
-                      pw.Text(a,
-                          style: pw.TextStyle(font: regular, fontSize: 8.4)),
-                    ]),
-                ],
-              ),
-              pw.SizedBox(height: 4),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('(امضا)',
-                      style: pw.TextStyle(font: regular, fontSize: 7.5,
-                          color: PdfColors.grey600)),
-                  pw.Text('نام و امضا تحویل گیرنده :',
-                      style: pw.TextStyle(font: regular, fontSize: 8.6)),
-                ],
-              ),
             ],
           ),
         );
@@ -242,68 +324,189 @@ class A5ReceiptService {
       );
     }
 
-    // ── برگ مشتری/بایگانی ──
-    pw.Widget customerSheet({required bool archive}) => pw.Column(
+    // تاریخ و ساعت خروج از کارگاه / تحویل — با حالت بی‌تاریخ (بند ۱۰)
+    String dueText() => ticket.dueUnknown
+        ? 'بعد از بررسی دستگاه به مشتری اعلام می گردد'
+        : '${shamsiDate(ticket.dueDate)} — ${toPersianDigits(ticket.dueTime)}';
+
+    // ── برگ فروشگاه — جدول اصلی مطابق فرم کاغذی (بند ۱ + ۱.۱۹) ──
+    pw.Widget shopSheet() => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             header(),
             pw.Center(
-              child: pw.Text(
-                  archive ? 'موافق سبد حسبی — بایگانی' : 'رسید سپردن دستگاه',
+              child: pw.Text('برگ فروشگاه',
                   style: pw.TextStyle(font: bold, fontSize: 12)),
             ),
-            pw.SizedBox(height: 4),
-            field('تاریخ ورود', shamsiDate(ticket.intakeDate)),
-            field('تاریخ ورد/تحویل',
-                ticket.dueUnknown
-                    ? 'بعد از بررسی دستگاه به مشتری اعلام می گردد'
-                    : '${shamsiDate(ticket.dueDate)} — ${toPersianDigits(ticket.dueTime)}'),
-            field('نام مشتری', customer.name),
-            field('شماره سریال', toPersianDigits(device.serial)),
-            field('مدل', device.model),
-            field('گارانتی', ''),
-            field('وضعیت ظاهری کالا',
+            pw.SizedBox(height: 3),
+            fieldPair('تاریخ ورود', shamsiDate(ticket.intakeDate),
+                'تاریخ و ساعت خروج از کارگاه', dueText()),
+            fieldPair('نام مشتری', customer.name, 'تلفن',
+                toPersianDigits(customer.phone)),
+            fieldPair('مدل', device.model,
+                'شماره سریال', toPersianDigits(device.serial)),
+            fieldPair('تعمیرکار', '',
+                'کد حفاظتی', ticket.lockPattern.isEmpty ? '' : toPersianDigits(ticket.lockPattern)),
+            field('عیب دستگاه', ticket.defect),
+            field('وضعیت ظاهری دستگاه',
                 ticket.phoneState.isEmpty ? '' : ticket.phoneState),
-            field('عیب اعلامی', ticket.defect),
-            field('شماره رسید', toPersianDigits(ticket.code)),
-            pw.SizedBox(height: 6),
-            pledges(),
-            pw.SizedBox(height: 6),
+            pw.SizedBox(height: 5),
+            // جدول اصلی — ستون اول سمت راست «ردیف»، دوم عیوب و قطعات (پهن‌ترین)، سوم مبلغ
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.7),
+              columnWidths: const {
+                0: pw.FixedColumnWidth(26),
+                1: pw.FlexColumnWidth(),
+                2: pw.FixedColumnWidth(74),
+              },
+              children: [
+                pw.TableRow(
+                  decoration:
+                      const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    _cell('ردیف', bold, 9),
+                    _cell('عیـوب و قطعـات تعویض شـده', bold, 9),
+                    _cell('مبـلـغ', bold, 9),
+                  ],
+                ),
+                // ۵ ردیف شماره‌دار — فقط اقلام واقعی سفارش (بند ۱.۱۸)؛ خالی‌ها فقط شماره
+                for (var i = 0; i < 5; i++)
+                  pw.TableRow(children: [
+                    _cell(toPersianDigits('${i + 1}'), regular, 8.5),
+                    _cell(
+                        i < items.length
+                            ? (items[i].qty > 1
+                                ? '${items[i].description} × ${toPersianDigits('${items[i].qty}')}'
+                                : items[i].description)
+                            : '',
+                        regular, 8.5),
+                    _cell(
+                        i < items.length && items[i].price > 0
+                            ? money(items[i].price * items[i].qty)
+                            : '',
+                        regular, 8.5),
+                  ]),
+                // جمع مبالغ — بند ۱.۱۹: مبالغ اضافه‌شده در سفارشات همین‌جا نمایش داده می‌شود
+                pw.TableRow(children: [
+                  _cell('', regular, 8.5),
+                  _cell('جمع مبالغ', bold, 8.5),
+                  _cell(totalItems > 0 ? money(totalItems) : '', bold, 8.5),
+                ]),
+              ],
+            ),
+            // «جمع بحروف ریال» — سطر یکپارچه زیر جدول (بدون پشتیبانی colspan در جدول)
+            pw.Container(
+              padding: const pw.EdgeInsets.all(3),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey700, width: 0.7),
+              ),
+              child: pw.Row(
+                children: [
+                  pw.Text('جمع بحروف ریال :',
+                      style: pw.TextStyle(font: bold, fontSize: 8.5)),
+                  pw.SizedBox(width: 6),
+                  pw.Expanded(
+                    child: pw.Container(
+                      decoration: const pw.BoxDecoration(
+                        border: pw.Border(
+                          bottom: pw.BorderSide(
+                              color: PdfColors.grey500,
+                              width: 0.6,
+                              style: pw.BorderStyle.dashed),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            // متعلقات — همه با مربع تیک، فقط انتخاب‌شده‌ها علامت
+            pw.Text('متعلقات دستگاه :',
+                style: pw.TextStyle(font: bold, fontSize: 8.8)),
+            pw.SizedBox(height: 2),
+            accessoriesWrap(onlySelected: false),
+            pw.SizedBox(height: 8),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
+                if (ticket.lockPattern.isNotEmpty)
+                  pw.SizedBox(width: 86, height: 60, child: lockPatternBox()),
                 pw.Column(children: [
-                  if (ticket.lockPattern.isNotEmpty) ...[
-                    lockPatternBox(),
-                    pw.Text('پترن قفل دستگاه',
-                        style: pw.TextStyle(font: regular, fontSize: 7)),
-                  ],
+                  if (stampBytes != null) img(stampBytes, w: 44)!,
+                  pw.Container(width: 90, child: pw.Column(children: [
+                    pw.Container(width: 90, height: 1, color: PdfColors.grey600),
+                    pw.Text('مهر و امضای فروشگاه',
+                        style: pw.TextStyle(font: regular, fontSize: 8)),
+                  ])),
+                ]),
+              ],
+            ),
+            pw.SizedBox(height: 6),
+            pw.Text('امضا',
+                style: pw.TextStyle(font: regular, fontSize: 7.5,
+                    color: PdfColors.grey600)),
+          ],
+        );
+
+    // ── برگ مشتری (برگ ۱) — مطابق فرم کاغذی ──
+    pw.Widget customerSheet() => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            header(),
+            pw.Center(
+              child: pw.Text('رسید سپردن دستگاه — برگ مشتری',
+                  style: pw.TextStyle(font: bold, fontSize: 12)),
+            ),
+            pw.SizedBox(height: 3),
+            fieldPair('تاریخ ورود', shamsiDate(ticket.intakeDate),
+                'تاریخ و ساعت تحویل', dueText()),
+            fieldPair('نام مشتری', customer.name, 'مدل دستگاه', device.model),
+            fieldPair('شماره سریال', toPersianDigits(device.serial),
+                'هزینه احتمالی', moneyToman(ticket.estimateAmount)),
+            fieldPair('عیب دستگاه', ticket.defect,
+                'بیعانه', moneyToman(ticket.depositAmount)),
+            field('تلفن', toPersianDigits(customer.phone)),
+            pw.SizedBox(height: 4),
+            pledges(),
+            pw.SizedBox(height: 5),
+            // فقط متعلقات انتخاب‌شده — بند ۱.۱۸
+            pw.Text('متعلقات تحویل داده شده به مشتری:',
+                style: pw.TextStyle(font: bold, fontSize: 8.8)),
+            pw.SizedBox(height: 2),
+            accessoriesWrap(onlySelected: true),
+            pw.SizedBox(height: 5),
+            pw.Text(
+                'اینجانب ${customer.name.isNotEmpty ? customer.name : "........"} تمام موارد فوق را با دقت مطالعه نموده و می‌پذیرم.',
+                style: pw.TextStyle(font: regular, fontSize: 8.8)),
+            pw.SizedBox(height: 8),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Column(children: [
+                  pw.Text('نام و امضاء تحویل گیرنده:',
+                      style: pw.TextStyle(font: regular, fontSize: 8.6)),
+                  pw.SizedBox(height: 4),
+                  pw.Container(width: 90, height: 1, color: PdfColors.grey600),
                 ]),
                 pw.Column(children: [
                   if (sigBytes != null) img(sigBytes, w: 46)!,
                   pw.Container(
                     width: 90,
                     child: pw.Column(children: [
-                      pw.Container(
-                        width: 90,
-                        height: 1,
-                        color: PdfColors.grey600,
-                      ),
-                      pw.Text('امضای مشتری',
+                      pw.Container(width: 90, height: 1, color: PdfColors.grey600),
+                      pw.Text('امضاء مشتري',
                           style: pw.TextStyle(font: regular, fontSize: 8)),
                     ]),
                   ),
                 ]),
                 pw.Column(children: [
-                  if (stampBytes != null) img(stampBytes, w: 46)!,
+                  if (stampBytes != null) img(stampBytes, w: 40)!,
                   pw.Container(
                     width: 90,
                     child: pw.Column(children: [
-                      pw.Container(
-                        width: 90,
-                        height: 1,
-                        color: PdfColors.grey600,
-                      ),
+                      pw.Container(width: 90, height: 1, color: PdfColors.grey600),
                       pw.Text('مهر و امضای فروشگاه',
                           style: pw.TextStyle(font: regular, fontSize: 8)),
                     ]),
@@ -314,129 +517,158 @@ class A5ReceiptService {
           ],
         );
 
-    // ── برگ فروشگاه — با جدول اقلام (مطابق فرم کاغذی) ──
-    pw.Widget shopSheet() {
-      final rows = <List<String>>[];
-      for (var i = 0; i < 5; i++) {
-        if (i < items.length) {
-          final it = items[i];
-          rows.add([
-            toPersianDigits('${i + 1}'),
-            '${it.description} × ${toPersianDigits('${it.qty}')}',
-            it.price > 0 ? money(it.price * it.qty) : '',
-          ]);
-        } else {
-          rows.add([toPersianDigits('${i + 1}'), '', '']);
-        }
+    // ── برگ بایگانی (برگ ۳) — فرم اقلام تحویل داده شده (بند ۱.۱۶/۱.۱۷) ──
+    pw.Widget archiveSheet() {
+      final rows = <pw.TableRow>[];
+      for (var i = 0; i < items.length; i++) {
+        final it = items[i];
+        rows.add(pw.TableRow(children: [
+          _cell(toPersianDigits('${i + 1}'), regular, 8.5),
+          _cell(
+              it.qty > 1
+                  ? '${it.description} × ${toPersianDigits('${it.qty}')}'
+                  : it.description,
+              regular, 8.5),
+          _cell(it.price > 0 ? money(it.price * it.qty) : '', regular, 8.5),
+        ]));
       }
-      final total = items.fold<int>(0, (s, i) => s + i.price * i.qty);
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          header(),
+          header(compact: true),
           pw.Center(
-            child: pw.Text('رسید سپردن — نسخه فروشگاه',
-                style: pw.TextStyle(font: bold, fontSize: 12)),
+            child: pw.Text('برگ بایگانی — اقلام تحویل داده شده به مشتری',
+                style: pw.TextStyle(font: bold, fontSize: 11.5)),
           ),
           pw.SizedBox(height: 4),
-          field('تاریخ ورود', shamsiDate(ticket.intakeDate)),
+          fieldPair('تاریخ و ساعت تحویل', dueText(),
+              'شماره رسید', toPersianDigits(ticket.code)),
           field('نام مشتری', customer.name),
-          field('تلفن', toPersianDigits(customer.phone)),
           field('مدل دستگاه', device.model),
-          field('شماره رسید', toPersianDigits(ticket.code)),
-          pw.SizedBox(height: 6),
-          // جدول اقلام
+          field('عیب دستگاه', ticket.defect),
+          pw.SizedBox(height: 4),
+          pw.Text('متعلقات تحویل داده شده به مشتری:',
+              style: pw.TextStyle(font: bold, fontSize: 8.8)),
+          pw.SizedBox(height: 2),
+          accessoriesWrap(onlySelected: true),
+          pw.SizedBox(height: 5),
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.7),
+            columnWidths: const {
+              0: pw.FixedColumnWidth(26),
+              1: pw.FlexColumnWidth(),
+              2: pw.FixedColumnWidth(74),
+            },
             children: [
               pw.TableRow(
-                decoration:
-                    const pw.BoxDecoration(color: PdfColors.grey200),
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                 children: [
                   _cell('ردیف', bold, 9),
-                  _cell('توضیحات و قیمت توری نشده', bold, 9),
+                  _cell('شرح کالا', bold, 9),
                   _cell('مبلغ', bold, 9),
                 ],
               ),
-              for (final r in rows)
+              if (rows.isEmpty)
                 pw.TableRow(children: [
-                  _cell(r[0], regular, 8.5),
-                  _cell(r[1], regular, 8.5),
-                  _cell(r[2], regular, 8.5),
-                ]),
-              pw.TableRow(children: [
-                _cell('', regular, 8.5),
-                _cell('جمع صفحه', bold, 8.5),
-                _cell(total > 0 ? money(total) : '', bold, 8.5),
-              ]),
+                  _cell(toPersianDigits('1'), regular, 8.5),
+                  _cell('', regular, 8.5),
+                  _cell('', regular, 8.5),
+                ])
+              else
+                ...rows,
               pw.TableRow(children: [
                 _cell('', regular, 8.5),
                 _cell('تحویل گردید', bold, 8.5),
-                _cell('', regular, 8.5),
+                _cell(totalItems > 0 ? money(totalItems) : '', bold, 8.5),
               ]),
             ],
           ),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 14),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              if (stampBytes != null) img(stampBytes, w: 44)! else pw.SizedBox(),
               pw.Column(children: [
                 pw.Container(width: 90, height: 1, color: PdfColors.grey600),
-                pw.Text('مهر و امضای فروشگاه',
-                    style: pw.TextStyle(font: regular, fontSize: 8)),
+                pw.Text('امضاء تحویل گیرنده',
+                    style: pw.TextStyle(font: regular, fontSize: 8.4)),
+              ]),
+              pw.Column(children: [
+                if (sigBytes != null) img(sigBytes, w: 44)!,
+                pw.Container(
+                  width: 90,
+                  child: pw.Column(children: [
+                    pw.Container(width: 90, height: 1, color: PdfColors.grey600),
+                    pw.Text('امضاء مشتری',
+                        style: pw.TextStyle(font: regular, fontSize: 8.4)),
+                  ]),
+                ),
+              ]),
+              pw.Column(children: [
+                if (stampBytes != null) img(stampBytes, w: 40)!,
+                pw.Container(
+                  width: 90,
+                  child: pw.Column(children: [
+                    pw.Container(width: 90, height: 1, color: PdfColors.grey600),
+                    pw.Text('مهر و امضای فروشگاه',
+                        style: pw.TextStyle(font: regular, fontSize: 8.4)),
+                  ]),
+                ),
               ]),
             ],
           ),
-          pw.SizedBox(height: 6),
-          pw.Text('امضا',
-              style: pw.TextStyle(font: regular, fontSize: 7.5,
-                  color: PdfColors.grey600)),
         ],
       );
     }
 
     // افزودن صفحات انتخابی — بند ۱۰: کاربر تیک می‌زند کدام برگه‌ها پرینت شوند
     final (s1, s2, s3) = sheets;
+    pw.Page page(pw.Widget Function() body) => pw.Page(
+          pageFormat: PdfPageFormat.a5,
+          margin: const pw.EdgeInsets.all(18),
+          textDirection: pw.TextDirection.rtl,
+          build: (_) => body(),
+        );
+    var added = 0;
     if (s1) {
-      doc.addPage(pw.Page(
-        pageFormat: PdfPageFormat.a5,
-        margin: const pw.EdgeInsets.all(18),
-        textDirection: pw.TextDirection.rtl,
-        build: (_) => customerSheet(archive: false),
-      ));
+      doc.addPage(page(customerSheet));
+      added++;
     }
     if (s2) {
-      doc.addPage(pw.Page(
-        pageFormat: PdfPageFormat.a5,
-        margin: const pw.EdgeInsets.all(18),
-        textDirection: pw.TextDirection.rtl,
-        build: (_) => shopSheet(),
-      ));
+      doc.addPage(page(shopSheet));
+      added++;
     }
     if (s3) {
-      doc.addPage(pw.Page(
-        pageFormat: PdfPageFormat.a5,
-        margin: const pw.EdgeInsets.all(18),
-        textDirection: pw.TextDirection.rtl,
-        build: (_) => customerSheet(archive: true),
-      ));
+      doc.addPage(page(archiveSheet));
+      added++;
     }
-    if (!s1 && !s2 && !s3) {
+    if (added == 0) {
       // هیچ برگی انتخاب نشده — برگ مشتری به‌عنوان پیش‌فرض
-      doc.addPage(pw.Page(
-        pageFormat: PdfPageFormat.a5,
-        margin: const pw.EdgeInsets.all(18),
-        textDirection: pw.TextDirection.rtl,
-        build: (_) => customerSheet(archive: false),
-      ));
+      doc.addPage(page(customerSheet));
     }
 
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = p.join(docs.path, 'receipts');
-    await Directory(dir).create(recursive: true);
-    final path = p.join(dir, '${ticket.code}-A5.pdf');
-    await File(path).writeAsBytes(await doc.save());
+    return await doc.save();
+  }
+
+  /// ذخیره PDF در محل دلخواه کاربر (بند ۱.۱۴) — دیالوگ file_selector؛
+  /// اگر کاربر انصراف داد null برمی‌گردد (بدون نوشتن فایل)؛ در محیط بدون
+  /// دیالوگ (خطای پلتفرمی) مسیر پیش‌فرض اسناد استفاده می‌شود تا اندروید نشکند.
+  static Future<String?> saveToUserPath(Uint8List bytes, String suggestedName) async {
+    String? path;
+    try {
+      final save = await getSaveLocation(
+          suggestedName: suggestedName,
+          acceptedTypeGroups: const [
+            XTypeGroup(label: 'PDF', extensions: ['pdf'])
+          ]);
+      path = save?.path;
+    } catch (_) {
+      // پلتفرم بدون دیالوگ — مسیر پیش‌فرض اسناد
+      final dir = await PdfService.receiptsDir();
+      path = p.join(dir, suggestedName);
+    }
+    if (path == null || path.isEmpty) return null; // انصراف کاربر — بدون نوشتن
+    final f = File(path);
+    await f.writeAsBytes(bytes);
     return path;
   }
 

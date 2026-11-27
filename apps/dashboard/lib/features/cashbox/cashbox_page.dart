@@ -11,7 +11,7 @@ import '../../core/services/app_session.dart';
 import '../../core/utils.dart';
 import '../../shared/widgets/data_table_pro.dart';
 import '../../shared/widgets/persian_number_field.dart';
-import '../tickets/ticket_detail.dart';
+import '../orders/orders_page.dart' show printTicketReceipt;
 
 class _CashRow {
   final Ticket ticket;
@@ -49,12 +49,11 @@ class _CashboxPageState extends State<CashboxPage> {
   Future<void> _load() async {
     final tickets = await TicketRepo.all();
     final cNames = await CustomerRepo.nameMap();
-    final invoices = await InvoiceRepo.allByTicketMap();
+    // بند ۲۳ — فاکتور ابطالی هرگز در صندوق دیده نمی‌شود
+    final invoices = await InvoiceRepo.activeByTicketMap();
     final out = <_CashRow>[];
     for (final t in tickets) {
       final inv = invoices[t.id];
-      // فاکتور ابطالی در صندوق نمایش داده نمی‌شود
-      if (inv != null && (inv['status'] ?? '') == 'cancelled') continue;
       out.add(_CashRow(
         t,
         cNames[t.customerId] ?? '-',
@@ -68,7 +67,10 @@ class _CashboxPageState extends State<CashboxPage> {
     });
   }
 
-  Future<void> _settle(_CashRow r) async {
+  /// فرم تسویه حساب — بازطراحی صندوق (بند ۲۴)
+  /// کلیک روی ردیف، برگه تسویه با سربرگ سند، فیلد مبلغ با جداسازی سه‌رقمی،
+  /// دکمه‌های سریع و چاپ را باز می‌کند. دسترسی: action.ticket.settle
+  Future<void> _openSettleSheet(_CashRow r0) async {
     final me = AppSession.I.currentUser;
     if (!me!.can('action.ticket.settle')) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -77,24 +79,173 @@ class _CashboxPageState extends State<CashboxPage> {
       ));
       return;
     }
-    if (r.invoiceId == 0) {
+    var row = r0;
+    if (row.invoiceId == 0) {
       // هنوز سندی ندارد — پیش‌فاکتور بساز
       await InvoiceRepo.createFromTicket(
-          ticket: r.ticket, kind: InvoiceRepo.kindPre);
-      await _load();
+          ticket: row.ticket, kind: InvoiceRepo.kindPre);
+      final invoices = await InvoiceRepo.allByTicketMap();
+      final inv = invoices[row.ticket.id];
+      if (inv != null) row = _CashRow(row.ticket, row.customer, inv);
     }
-    final ctrl = TextEditingController(text: '${r.remaining}');
-    final amount = await showDialog<int>(
+    if (!mounted) return;
+    final amountCtrl = TextEditingController(text: '${row.remaining}');
+    Future<void> refreshRow(void Function() sbSet) async {
+      final invoices = await InvoiceRepo.allByTicketMap();
+      final inv = invoices[row.ticket.id];
+      sbSet(() {
+        if (inv != null) row = _CashRow(row.ticket, row.customer, inv);
+        amountCtrl.text = '${row.remaining > 0 ? row.remaining : 0}';
+      });
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: StatefulBuilder(
+          builder: (ctx, sbSet) => Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('فرم تسویه حساب (بند ۲۴)',
+                      style: Theme.of(ctx).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  // سربرگ سند — شماره/جمع/پرداخت‌شده/مانده
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Wrap(
+                      spacing: 16,
+                      runSpacing: 4,
+                      children: [
+                        Text('سند: ${row.number.isEmpty ? '—' : toPersianDigits(row.number)}',
+                            style: const TextStyle(fontSize: 12.5)),
+                        Text('جمع: ${money(row.total)}',
+                            style: const TextStyle(fontSize: 12.5)),
+                        Text('پرداخت‌شده: ${money(row.paid)}',
+                            style: const TextStyle(fontSize: 12.5)),
+                        Text('مانده: ${money(row.remaining)}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: row.remaining > 0
+                                  ? Colors.red
+                                  : Colors.green,
+                            )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // مبلغ وصول با جداسازی سه‌رقمی حین تایپ (بند ۲۴)
+                  PersianNumberField(
+                    label: 'مبلغ وصول (تومان)',
+                    controller: amountCtrl,
+                    hint: '${row.remaining > 0 ? row.remaining : 0}',
+                    groupThousands: true,
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.done_all, size: 18),
+                        label: const Text('تسویه کامل'),
+                        onPressed: () => sbSet(() =>
+                            amountCtrl.text = '${row.remaining > 0 ? row.remaining : 0}'),
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.percent, size: 18),
+                        label: const Text('تخفیف نقدی'),
+                        onPressed: () async {
+                          await _discountAmount(row);
+                          refreshRow(sbSet);
+                        },
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.percent, size: 18),
+                        label: const Text('تخفیف درصدی'),
+                        onPressed: () async {
+                          await _discountPercent(row);
+                          refreshRow(sbSet);
+                        },
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.playlist_add, size: 18),
+                        label: const Text('افزودن قلم'),
+                        onPressed: () async {
+                          await _addItem(row);
+                          refreshRow(sbSet);
+                        },
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.playlist_remove, size: 18),
+                        label: const Text('کسر قلم'),
+                        onPressed: () async {
+                          await _removeItem(row);
+                          refreshRow(sbSet);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.picture_as_pdf, size: 18),
+                      label: const Text('چاپ'),
+                      onPressed: () => printTicketReceipt(ctx, row.ticket),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.payments, size: 18),
+                        label: const Text('ثبت وصول'),
+                        onPressed: () async {
+                          final amount = int.tryParse(toEnglishDigits(
+                                  amountCtrl.text)
+                              .replaceAll(',', '')) ??
+                              0;
+                          if (amount <= 0) return;
+                          await InvoiceRepo.settle(row.invoiceId,
+                              row.ticket.id!,
+                              amount: amount, userId: me.id);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        },
+                      ),
+                    ),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    amountCtrl.dispose();
+    _load();
+  }
+
+  /// تخفیف نقدی (بند ۲۴)
+  Future<void> _discountAmount(_CashRow r) async {
+    final ctrl = TextEditingController();
+    final value = await showDialog<int>(
       context: context,
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Text('تسویه ${toPersianDigits(r.ticket.code)}'),
+          title: const Text('تخفیف نقدی'),
           content: PersianNumberField(
-            label: 'مبلغ وصول (تومان)',
-            controller: ctrl,
-            hint: '${r.remaining}',
-          ),
+              label: 'مبلغ (تومان)', controller: ctrl, hint: '0'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
@@ -105,57 +256,31 @@ class _CashboxPageState extends State<CashboxPage> {
                   int.tryParse(
                           toEnglishDigits(ctrl.text).replaceAll(',', '')) ??
                       0),
-              child: const Text('ثبت وصول'),
+              child: const Text('اعمال'),
             ),
           ],
         ),
       ),
     );
-    if (amount == null || amount <= 0) return;
-    await InvoiceRepo.settle(r.invoiceId, r.ticket.id!,
-        amount: amount, userId: me.id);
+    if (value == null || value <= 0 || r.invoiceId == 0) return;
+    await InvoiceRepo.applyDiscount(r.invoiceId, amount: value);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('وصول ثبت شد')));
+        const SnackBar(content: Text('تخفیف اعمال شد')));
     _load();
   }
 
-  Future<void> _discount(_CashRow r) async {
-    if (r.invoiceId == 0) return;
-    final kind = await showDialog<String>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('تخفیف'),
-          content: const Text('نوع تخفیف را انتخاب کنید (بند ۱۴)'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('انصراف')),
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, 'amount'),
-                child: const Text('نقدی (تومان)')),
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, 'percent'),
-                child: const Text('درصدی')),
-          ],
-        ),
-      ),
-    );
-    if (kind == null) return;
+  /// تخفیف درصدی (بند ۲۴)
+  Future<void> _discountPercent(_CashRow r) async {
     final ctrl = TextEditingController();
     final value = await showDialog<double>(
       context: context,
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Text(kind == 'amount' ? 'تخفیف نقدی' : 'تخفیف درصدی'),
+          title: const Text('تخفیف درصدی'),
           content: PersianNumberField(
-            label: kind == 'amount' ? 'مبلغ (تومان)' : 'درصد',
-            controller: ctrl,
-            hint: '0',
-          ),
+              label: 'درصد', controller: ctrl, hint: '0', allowDecimal: true),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
@@ -164,20 +289,16 @@ class _CashboxPageState extends State<CashboxPage> {
               onPressed: () => Navigator.pop(
                   ctx,
                   double.tryParse(
-                      toEnglishDigits(ctrl.text).replaceAll(',', '')) ??
-                  0),
+                          toEnglishDigits(ctrl.text).replaceAll(',', '')) ??
+                      0),
               child: const Text('اعمال'),
             ),
           ],
         ),
       ),
     );
-    if (value == null || value <= 0) return;
-    if (kind == 'amount') {
-      await InvoiceRepo.applyDiscount(r.invoiceId, amount: value.round());
-    } else {
-      await InvoiceRepo.applyDiscount(r.invoiceId, percent: value);
-    }
+    if (value == null || value <= 0 || r.invoiceId == 0) return;
+    await InvoiceRepo.applyDiscount(r.invoiceId, percent: value);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تخفیف اعمال شد')));
@@ -238,6 +359,58 @@ class _CashboxPageState extends State<CashboxPage> {
     _load();
   }
 
+  /// کسر قلم از سند — بازطراحی صندوق (بند ۲۴)
+  Future<void> _removeItem(_CashRow r) async {
+    final items = await TicketItemRepo.byTicket(r.ticket.id!);
+    if (!mounted) return;
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('قلمی برای کسر ثبت نشده است')));
+      return;
+    }
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('کسر قلم از سند'),
+          content: SizedBox(
+            width: 340,
+            height: 280,
+            child: ListView(
+              children: [
+                for (final it in items)
+                  ListTile(
+                    dense: true,
+                    title: Text(it.description),
+                    subtitle: Text(
+                        '${toPersianDigits('${it.qty}')} × ${money(it.price)}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete,
+                          size: 18, color: Colors.red),
+                      onPressed: () => Navigator.pop(ctx, it.id),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('انصراف')),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    await TicketItemRepo.delete(selected);
+    await InvoiceRepo.refreshForTicket(r.ticket.id!);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('قلم کسر و فاکتور به‌روز شد')));
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final unsettled = rows.where((r) => !r.settled).toList();
@@ -294,12 +467,7 @@ class _CashboxPageState extends State<CashboxPage> {
         rows: list,
         tableId: tableId,
         searchIndex: (r) => '${r.ticket.code} ${r.customer} ${r.number}',
-        onRowTap: (r) async {
-          await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => TicketDetailPage(ticketId: r.ticket.id!),
-          ));
-          _load();
-        },
+        onRowTap: (r) => _openSettleSheet(r),
         columns: [
           ProColumn<_CashRow>(
             label: 'کد سفارش',
@@ -356,21 +524,37 @@ class _CashboxPageState extends State<CashboxPage> {
         rowAction: (r) => Wrap(
           spacing: 4,
           children: [
+            // بند ۱۰.۷۱ — چاپ/PDF رسید از لیست صندوق
+            IconButton(
+              tooltip: 'چاپ/PDF رسید',
+              icon: const Icon(Icons.picture_as_pdf, size: 18),
+              onPressed: () => printTicketReceipt(context, r.ticket),
+            ),
             if (!r.settled) ...[
               IconButton(
-                tooltip: 'تسویه مانده',
+                tooltip: 'فرم تسویه (بند ۲۴)',
                 icon: const Icon(Icons.payments, size: 18),
-                onPressed: () => _settle(r),
+                onPressed: () => _openSettleSheet(r),
               ),
               IconButton(
-                tooltip: 'تخفیف نقدی/درصدی',
+                tooltip: 'تخفیف نقدی',
+                icon: const Icon(Icons.money_off, size: 18),
+                onPressed: () => _discountAmount(r),
+              ),
+              IconButton(
+                tooltip: 'تخفیف درصدی',
                 icon: const Icon(Icons.percent, size: 18),
-                onPressed: () => _discount(r),
+                onPressed: () => _discountPercent(r),
               ),
               IconButton(
                 tooltip: 'افزودن قلم',
                 icon: const Icon(Icons.playlist_add, size: 18),
                 onPressed: () => _addItem(r),
+              ),
+              IconButton(
+                tooltip: 'کسر قلم',
+                icon: const Icon(Icons.playlist_remove, size: 18),
+                onPressed: () => _removeItem(r),
               ),
             ] else
               const Icon(Icons.check_circle, size: 18, color: Colors.green),

@@ -13,6 +13,7 @@ import '../../core/services/attach_service.dart';
 import '../../core/services/delivery_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
+import '../../shared/widgets/qr_box.dart';
 
 class TicketDetailPage extends StatefulWidget {
   final int ticketId;
@@ -30,10 +31,13 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   List<Payment> payments = [];
   List<Map<String, Object?>> log = [];
   Future<List<Map<String, Object?>>>? attachments;
+  // فاز ۵b (بند ۱۰.۶۷) — شماره سند برای QR صفحه باز‌شده
+  String invoiceNumber = '';
 
   final itemDesc = TextEditingController();
   final itemQty = TextEditingController(text: '1');
   final itemPrice = TextEditingController();
+  // بند ۱۰.۶۹ — نوع قلم: قطعه/خدمت/تخفیف/خسارت
   String itemKind = 'service';
   final warrantyMonths = TextEditingController(text: '0');
 
@@ -59,6 +63,9 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     final i = await TicketItemRepo.byTicket(widget.ticketId);
     final p = await PaymentRepo.byTicket(widget.ticketId);
     final l = await TicketRepo.statusLog(widget.ticketId);
+    // بند ۱۰.۶۷ — شماره سند برای QR
+    final inv = await InvoiceRepo.mainForTicket(widget.ticketId);
+    final invNo = ((inv?['number'] ?? '') as String);
     if (!mounted) return;
     setState(() {
       t = ticket;
@@ -67,6 +74,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       items = i;
       payments = p;
       log = l;
+      invoiceNumber = invNo;
       attachments = AttachService.list(widget.ticketId);
     });
   }
@@ -164,22 +172,35 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     });
   }
 
-  int get itemsSum => items.fold<int>(0, (s, i) => s + i.price * i.qty);
+  // بند ۱۰.۶۹ — قلم خسارت در جمع حساب نمی‌شود؛ تخفیف با قیمت منفی جمع را کم می‌کند
+  int get itemsSum => items
+      .where((i) => i.countsInTotal)
+      .fold<int>(0, (s, i) => s + i.price * i.qty);
   int get paid => payments.fold<int>(0, (s, p) => s + p.amount);
   int get total => itemsSum > 0 ? itemsSum : (t?.estimateAmount ?? 0);
   int get remaining => total - paid;
 
   Future<void> _addItem() async {
-    final price = int.tryParse(toEnglishDigits(itemPrice.text)) ?? 0;
-    final qty = int.tryParse(toEnglishDigits(itemQty.text)) ?? 1;
-    if (itemDesc.text.trim().isEmpty || price <= 0) return;
+    final amount = int.tryParse(toEnglishDigits(itemPrice.text)) ?? 0;
+    // تخفیف/خسارت همیشه یک قلم با تعداد ۱ است (بند ۱۰.۶۹)
+    final isDiscount = itemKind == 'discount';
+    final isDamage = itemKind == 'damage';
+    final qty = (isDiscount || isDamage)
+        ? 1
+        : int.tryParse(toEnglishDigits(itemQty.text)) ?? 1;
+    // تخفیف با قیمت منفی ذخیره می‌شود تا از جمع کم شود
+    final price = isDiscount ? -amount : amount;
+    if (itemDesc.text.trim().isEmpty || amount <= 0) return;
     await TicketItemRepo.insert(TicketItem(
       ticketId: widget.ticketId,
-      kind: itemKind,
+      kind: itemKind == 'part' ? 'part' : 'service',
+      type: itemKind,
       description: itemDesc.text.trim(),
       qty: qty,
       price: price,
-      warrantyMonths: int.tryParse(toEnglishDigits(warrantyMonths.text)) ?? 0,
+      warrantyMonths: (isDiscount || isDamage)
+          ? 0
+          : int.tryParse(toEnglishDigits(warrantyMonths.text)) ?? 0,
     ));
     itemDesc.clear();
     itemPrice.clear();
@@ -283,6 +304,8 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
           child: ListView(
             children: [
               Wrap(spacing: 18, runSpacing: 4, children: [
+                // بند ۱۰.۶۷ — QR سند در صفحه باز‌شده (کد سفارش + شماره فاکتور)
+                QrBox(data: '${ticket.code} $invoiceNumber', size: 72),
                 Text('مشتری: ${c?.name ?? '-'}'),
                 Text('دستگاه: ${d?.model ?? '-'} — سریال: ${toPersianDigits(d?.serial ?? '')}'),
                 Text('موعد: ${shamsiDateTime(DateTime(
@@ -329,13 +352,19 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                   padding: const EdgeInsets.all(10),
                   child: Column(children: [
                     Row(children: [
+                      // بند ۱۰.۶۹ — انتخاب نوع قلم: قطعه/خدمت/تخفیف/خسارت
                       SegmentedButton<String>(
                         segments: const [
                           ButtonSegment(value: 'part', label: Text('قطعه')),
                           ButtonSegment(value: 'service', label: Text('خدمت')),
+                          ButtonSegment(
+                              value: 'discount', label: Text('تخفیف')),
+                          ButtonSegment(
+                              value: 'damage', label: Text('خسارت')),
                         ],
                         selected: {itemKind},
-                        onSelectionChanged: (v) => setState(() => itemKind = v.first),
+                        onSelectionChanged: (v) =>
+                            setState(() => itemKind = v.first),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -475,10 +504,22 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   }
 
   Widget _itemTile(TicketItem i) {
+    // بند ۱۰.۶۹ — برچسب و آیکن نوع قلم
+    final (icon, label, color) = switch (i.type) {
+      'discount' => (
+          Icons.percent,
+          'تخفیف',
+          Colors.orange
+        ),
+      'damage' => (Icons.report_problem, 'خسارت', Colors.red),
+      _ => i.kind == 'part'
+          ? (Icons.memory, 'قطعه', Colors.blueGrey)
+          : (Icons.build, 'خدمت', Colors.teal),
+    };
     return ListTile(
       dense: true,
-      leading: Icon(i.kind == 'part' ? Icons.memory : Icons.build, size: 20),
-      title: Text('${i.description} × ${toPersianDigits('${i.qty}')}'),
+      leading: Icon(icon, size: 20, color: color),
+      title: Text('$label: ${i.description} × ${toPersianDigits('${i.qty}')}'),
       subtitle: i.warrantyMonths > 0
           ? Text('گارانتی: ${toPersianDigits('${i.warrantyMonths}')} ماه',
               style: const TextStyle(color: Colors.green))

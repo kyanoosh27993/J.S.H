@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS ticket_items (
   price INTEGER DEFAULT 0,
   part_id INTEGER,
   warranty_months INTEGER DEFAULT 0,
+  item_type TEXT DEFAULT '',
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS payments (
@@ -89,7 +90,12 @@ CREATE TABLE IF NOT EXISTS invoices (
   paid INTEGER DEFAULT 0,
   remaining INTEGER DEFAULT 0,
   issued_at TEXT NOT NULL,
-  pdf_path TEXT DEFAULT ''
+  pdf_path TEXT DEFAULT '',
+  cost INTEGER DEFAULT 0,
+  damage INTEGER DEFAULT 0,
+  damage_user INTEGER,
+  profit_note TEXT DEFAULT '',
+  updated_at TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS warranties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,6 +252,10 @@ class Db {
         'cancel_reason',
         'note',
       ],
+      // فاز ۵b — بند ۱۲: نوع قلم سفارش (قطعه/خدمت/تخفیف/خسارت)
+      'ticket_items': [
+        'item_type',
+      ],
     };
     // ستون‌های عددی/NULL
     final intCols = <String, List<String>>{
@@ -261,6 +271,12 @@ class Db {
       ],
       'payments': [
         'user_id',
+      ],
+      // فاز ۵b — بند ۱۲: هزینه/خسارت/کاربر خسارت روی فاکتور (سود خالص)
+      'invoices': [
+        'cost',
+        'damage',
+        'damage_user',
       ],
     };
     for (final e in textCols.entries) {
@@ -332,11 +348,16 @@ CREATE TABLE invoices (
   status TEXT DEFAULT '',
   cancelled_at TEXT,
   cancel_reason TEXT DEFAULT '',
-  note TEXT DEFAULT ''
+  note TEXT DEFAULT '',
+  cost INTEGER DEFAULT 0,
+  damage INTEGER DEFAULT 0,
+  damage_user INTEGER,
+  profit_note TEXT DEFAULT '',
+  updated_at TEXT DEFAULT ''
 )''');
           await db.execute('''
-INSERT INTO invoices (id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_path, kind, status, cancelled_at, cancel_reason, note)
-SELECT id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_path, kind, status, cancelled_at, cancel_reason, note FROM invoices_legacy''');
+INSERT INTO invoices (id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_path, kind, status, cancelled_at, cancel_reason, note, cost, damage, damage_user, profit_note, updated_at)
+SELECT id, ticket_id, number, total, discount, paid, remaining, issued_at, pdf_path, kind, status, cancelled_at, cancel_reason, note, cost, damage, damage_user, profit_note, updated_at FROM invoices_legacy''');
           await db.execute('DROP TABLE invoices_legacy');
         }
       }

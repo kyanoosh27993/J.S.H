@@ -226,6 +226,9 @@ class TicketItem {
   int price;
   int? partId;
   int warrantyMonths;
+  // فاز ۵b (بند ۱۰.۶۹) — نوع قلم: '' (قدیمی: طبق kind) | 'piece' | 'service'
+  // | 'discount' (قیمت منفی ذخیره می‌شود) | 'damage' (در جمع فاکتور حساب نمی‌شود)
+  String type;
   String createdAt;
 
   TicketItem({
@@ -237,6 +240,7 @@ class TicketItem {
     this.price = 0,
     this.partId,
     this.warrantyMonths = 0,
+    this.type = '',
     String? createdAt,
   }) : createdAt = createdAt ?? DateTime.now().toIso8601String();
 
@@ -249,8 +253,13 @@ class TicketItem {
         price: (m['price'] ?? 0) as int,
         partId: m['part_id'] as int?,
         warrantyMonths: (m['warranty_months'] ?? 0) as int,
+        type: (m['item_type'] ?? '') as String,
         createdAt: (m['created_at'] ?? '') as String,
       );
+
+  /// آیا این قلم در جمع کل سفارش حساب می‌شود؟
+  /// قلم «خسارت» فقط ثبت اطلاعاتی است و مبلغ آن روی فاکتور (ستون damage) می‌آید.
+  bool get countsInTotal => type != 'damage';
 
   Map<String, Object?> toMap() => {
         if (id != null) 'id': id,
@@ -261,6 +270,7 @@ class TicketItem {
         'price': price,
         'part_id': partId,
         'warranty_months': warrantyMonths,
+        'item_type': type,
         'created_at': createdAt,
       };
 }

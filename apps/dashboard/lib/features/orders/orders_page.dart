@@ -9,12 +9,153 @@ import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
+import '../../core/services/a5_receipt_service.dart';
 import '../../core/services/app_session.dart';
+import '../../core/services/auth_service.dart' show kRoleCreator;
 import '../../core/utils.dart';
 import '../../shared/widgets/app_text.dart';
 import '../../shared/widgets/data_table_pro.dart';
+import '../../shared/widgets/persian_number_field.dart';
 import '../../shared/widgets/qr_box.dart';
 import '../tickets/ticket_detail.dart';
+
+/// نتیجه دیالوگ کادر هزینه/تخفیف/خسارت — بند ۱۲
+typedef _Financials = ({
+  int cost,
+  int discount,
+  int damage,
+  int? damageUserId,
+  String note,
+});
+
+/// کادر هزینه/تخفیف/خسارت + انتخاب کاربر خسارت‌زننده (بند ۱۲)
+/// فقط هنگام صدور فاکتور قطعی یا «اصلاح مبالغ» نمایش داده می‌شود.
+Future<_Financials?> showFinancialsDialog(
+  BuildContext context, {
+  int cost = 0,
+  int discount = 0,
+  int damage = 0,
+  int? damageUserId,
+  String note = '',
+}) async {
+  final costCtrl = TextEditingController(text: '$cost');
+  final discCtrl = TextEditingController(text: '$discount');
+  final dmgCtrl = TextEditingController(text: '$damage');
+  final noteCtrl = TextEditingController(text: note);
+  int? dmgUser = damageUserId;
+  final users = (await UserRepo.list())
+      .where((u) => ((u['is_active'] ?? 1) as int) == 1 &&
+          (u['role'] ?? '') != kRoleCreator)
+      .toList();
+  return showDialog<_Financials>(
+    context: context,
+    builder: (ctx) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: StatefulBuilder(
+        builder: (ctx, sbSet) => AlertDialog(
+          title: const Text('هزینه، تخفیف و خسارت (بند ۱۲)'),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PersianNumberField(
+                    label: 'هزینه (تومان)', controller: costCtrl, hint: '0'),
+                const SizedBox(height: 8),
+                PersianNumberField(
+                    label: 'تخفیف (تومان)', controller: discCtrl, hint: '0'),
+                const SizedBox(height: 8),
+                PersianNumberField(
+                    label: 'خسارت (تومان)', controller: dmgCtrl, hint: '0'),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<int?>(
+                  value: dmgUser,
+                  decoration: const InputDecoration(
+                    labelText: 'کاربر خسارت‌زننده (در صورت وارد کردن خسارت)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('— بدون کاربر —')),
+                    for (final u in users)
+                      DropdownMenuItem<int?>(
+                        value: u['id'] as int?,
+                        child: Text(
+                            '${(u['display_name'] ?? '') as String} (${u['username']})'),
+                      ),
+                  ],
+                  onChanged: (v) => sbSet(() => dmgUser = v),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: noteCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'یادداشت سود (اختیاری)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('انصراف')),
+            FilledButton(
+              onPressed: () {
+                int parse(TextEditingController c) => int.tryParse(
+                        toEnglishDigits(c.text).replaceAll(',', '')) ??
+                    0;
+                Navigator.pop(
+                  ctx,
+                  (
+                    cost: parse(costCtrl),
+                    discount: parse(discCtrl),
+                    damage: parse(dmgCtrl),
+                    damageUserId:
+                        parse(dmgCtrl) > 0 ? dmgUser : null,
+                    note: noteCtrl.text.trim(),
+                  ),
+                );
+              },
+              child: const Text('ثبت'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// چاپ/PDF رسید سه‌برگی سفارش — بند ۱۰.۷۱ (بدون دیالوگ؛ برگ مشتری)
+Future<void> printTicketReceipt(BuildContext context, Ticket t) async {
+  final mess = ScaffoldMessenger.of(context);
+  try {
+    final shop = await SettingsRepo.all();
+    final customer = await CustomerRepo.byId(t.customerId);
+    final device = await DeviceRepo.byId(t.deviceId);
+    if (customer == null || device == null) {
+      throw Exception('مشتری یا دستگاه سفارش یافت نشد');
+    }
+    final items = await TicketItemRepo.byTicket(t.id!);
+    final path = await A5ReceiptService.build(
+      shop: shop,
+      ticket: t,
+      customer: customer,
+      device: device,
+      items: items,
+      sheets: (true, false, false),
+    );
+    mess.showSnackBar(SnackBar(
+        content: Text('PDF رسید ذخیره شد: ${toPersianDigits(path)}')));
+  } catch (e) {
+    mess.showSnackBar(SnackBar(
+      content: Text('خطا در ساخت PDF: $e'),
+      backgroundColor: Colors.red,
+    ));
+  }
+}
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
@@ -70,7 +211,21 @@ class _OrdersPageState extends State<OrdersPage> {
     }
     final isDelivered = t.status == TicketStatus.delivered;
     final kind = isDelivered ? InvoiceRepo.kindFinal : InvoiceRepo.kindPre;
-    final id = await InvoiceRepo.createFromTicket(ticket: t, kind: kind);
+    // بند ۱۲ — فاکتور قطعی: کادر هزینه/تخفیف/خسارت + کاربر خسارت‌زننده
+    _Financials? fin;
+    if (isDelivered) {
+      fin = await showFinancialsDialog(context);
+      if (fin == null) return; // انصراف از صدور
+    }
+    final id = await InvoiceRepo.createFromTicket(
+      ticket: t,
+      kind: kind,
+      cost: fin?.cost,
+      discount: fin?.discount ?? 0,
+      damage: fin?.damage,
+      damageUserId: fin?.damageUserId,
+      profitNote: fin?.note,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(isDelivered
@@ -228,6 +383,13 @@ class _OrdersPageState extends State<OrdersPage> {
                               QrBox(
                                   data:
                                       '${t.code} ${(invoicesByTicket[t.id]?['number'] ?? '')}'),
+                              // بند ۱۰.۷۱ — چاپ/PDF رسید از لیست سفارشات
+                              IconButton(
+                                tooltip: 'چاپ/PDF رسید',
+                                icon: const Icon(Icons.picture_as_pdf,
+                                    size: 18),
+                                onPressed: () => printTicketReceipt(context, t),
+                              ),
                               if (me?.can('action.invoice.edit') ?? false)
                                 IconButton(
                                   tooltip: t.status == TicketStatus.delivered
