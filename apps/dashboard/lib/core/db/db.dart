@@ -163,9 +163,9 @@ CREATE TABLE IF NOT EXISTS warranty_records (
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL
 );
-// فاز ۹ — بند ۲۵: تنظیمات قلم‌به‌قلم گارانتی (کاهش/ابطال/افزایش مدت)
-// چون warranty_records برای هر سفارش یکتاست، هر تغییر به‌صورت ردیف
-// جداگانه اینجا ذخیره می‌شود؛ آخرین ردیف هر (ticket_id, item_id) حاکم است.
+-- فاز ۹ — بند ۲۵: تنظیمات قلم‌به‌قلم گارانتی (کاهش/ابطال/افزایش مدت)
+-- چون warranty_records برای هر سفارش یکتاست، هر تغییر به‌صورت ردیف
+-- جداگانه اینجا ذخیره می‌شود؛ آخرین ردیف هر (ticket_id, item_id) حاکم است.
 CREATE TABLE IF NOT EXISTS warranty_adjusts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ticket_id INTEGER NOT NULL REFERENCES tickets(id),

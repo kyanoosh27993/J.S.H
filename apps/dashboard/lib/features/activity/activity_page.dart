@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/db/db.dart';
+import '../../core/services/supervisor_service.dart' show AuditRepo;
 import '../../core/repos.dart';
 import '../../core/theme/theme_config.dart';
 import '../../core/utils.dart';
