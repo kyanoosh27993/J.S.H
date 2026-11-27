@@ -106,6 +106,39 @@ jobs:
           files: jsh-license-gen-windows-x64.zip
           fail_on_unmatched_files: true
 
+  build-license-gen-android:
+    name: بیلد مولد کد فعال‌سازی — Android APK
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/license_gen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # هم‌نسخه با build-android — 3.50 حداقل Gradle 9.3.1 می‌خواهد
+          flutter-version: 3.35.0
+          cache: true
+      # پلتفرم اندروید به‌صورت محلی اضافه نشده بود؛ اینجا تولید می‌شود
+      # (flutter create با وجود pubspec.yaml فقط پوشه‌های پلتفرم را می‌سازد و فایل‌های موجود را بازنویسی نمی‌کند)
+      - name: تولید پلتفرم اندروید
+        run: flutter create --platforms=android .
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - name: تغییر نام APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/jsh-license-gen-android.apk"
+      - name: انتشار در Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: jsh-license-gen-android.apk
+          fail_on_unmatched_files: true
+
   build-android:
     name: بیلد Android APK (فاز ۳)
     if: startsWith(github.ref, 'refs/tags/v')
