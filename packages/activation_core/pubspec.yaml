@@ -8,6 +8,8 @@ environment:
 
 dependencies:
   crypto: ^3.0.3
+  # تقویم شمسی — برای پارس تاریخ شمسی در ابزار خط فرمان example/make_code.dart
+  shamsi_date: ^1.0.4
 
 dev_dependencies:
   test: ^1.25.0

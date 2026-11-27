@@ -34,6 +34,22 @@
 دفترچه یادداشت خط فرمانی `src/jsh.py` از مرحله قبلی پروژه حفظ شده است:
 `python src/jsh.py add «عنوان» --tag کار --body «متن»`
 
+## برنامه تولید کد فعال‌سازی (مخصوص سازنده) 🗝️
+
+برنامه جانبی مولد کد فعال‌سازی در `apps/license_gen/` قرار دارد و موتور مشترک آن در `packages/activation_core/`. **مستندات کامل برای تغییر دادن مستقل این برنامه:**
+
+| سند | محتوا |
+|---|---|
+| [`apps/license_gen/README.md`](apps/license_gen/README.md) | معرفی، عملکرد، شروع سریع، جریان فعال‌سازی خریدار |
+| [`docs/COMMANDS.md`](apps/license_gen/docs/COMMANDS.md) | **تمام دستورات لازم**: پیش‌نیاز، اجرا، تست، بیلد exe، انتشار، پشتیبان‌گیری، ابزار خط فرمان |
+| [`docs/ARCHITECTURE.md`](apps/license_gen/docs/ARCHITECTURE.md) | نقشه فایل‌ها + دیاگرام معماری و جریان داده + مرز اشتراک با برنامه اصلی |
+| [`docs/CODE_FORMAT.md`](apps/license_gen/docs/CODE_FORMAT.md) | فرمت کد فعال‌سازی بایت‌به‌بایت با مثال واقعی |
+| [`docs/DATABASE.md`](apps/license_gen/docs/DATABASE.md) | بانک تاریخچه کدها، پشتیبان‌گیری، خروجی CSV، مهاجرت اسکیما |
+| [`docs/CUSTOMIZATION.md`](apps/license_gen/docs/CUSTOMIZATION.md) | راهنمای گام‌به‌گام تغییرات (رنگ، متن، فیلدها، کلید امضا، قالب کد) + کارهای ممنوعه |
+| [`docs/TROUBLESHOOTING.md`](apps/license_gen/docs/TROUBLESHOOTING.md) | عیب‌یابی کد کار نمی‌کند، بیلد، بانک و CSV |
+
+ابزار خط‌فرمان تولید/بررسی کد (خودکارسازی): `dart run packages/activation_core/example/make_code.dart --device <شناسه> --expiry 1406/09/04`
+
 ## وضعیت توسعه: فاز ۱ در حال اجرا ✅
 
 کد فاز ۱ (هسته ویندوز) در `apps/dashboard/` نوشته و اعتبارسنجی شد (`flutter analyze`: بدون خطا — `flutter test`: هر ۳ تست سبز):

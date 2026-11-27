@@ -4,7 +4,7 @@
 ///   payload  = magic(1) + version(1) + expiryDays(3) + maxReinstalls(1) + deviceHash(8)
 ///   code     = base32(payload + HMAC-SHA256(payload, key)[0..8])
 ///
-/// • expiryDays: روزهای سپری‌شده از epoch میلادی تا پایان اعتبار (۳ بایت — تا سال ۲۱۶۷)
+/// • expiryDays: روزهای سپری‌شده از epoch میلادی تا پایان اعتبار (۳ بایت — بیش از ۱۶ میلیون روز)
 /// • maxReinstalls: سقف نصب مجدد روی همان دستگاه (۰ = پیش‌فرض برنامه)
 /// • deviceHash = SHA-256('JSH-DEV|' + deviceId) — ۸ بایت اول؛ کد فقط روی همان دستگاه کار می‌کند
 ///
