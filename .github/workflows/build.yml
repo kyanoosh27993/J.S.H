@@ -150,8 +150,8 @@ jobs:
       - name: جایگزینی آیکن برند APK مولد کد
         run: |
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            cp "assets/logo/mipmap-$d/ic_launcher.png" \
-               "apps/license_gen/android/app/src/main/res/mipmap-$d/ic_launcher.png"
+            cp "$GITHUB_WORKSPACE/assets/logo/mipmap-$d/ic_launcher.png" \
+               "android/app/src/main/res/mipmap-$d/ic_launcher.png"
           done
       - run: flutter pub get
       - run: flutter build apk --release
