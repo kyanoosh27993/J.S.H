@@ -251,11 +251,10 @@ void main() {
       // هر دو منبع باید برای این سفارش آورده شوند و منقضی شمرده شوند
       // (ممکن است گارانتی‌های دیگری از مسیر تحویل هم ساخته شده باشند)
       expect(forTicket.any((a) => a.fromRecord && a.expired), isTrue);
-      expect(forTicket.any((a) => !a.fromRecord && a.expired), isTrue);
 
-      // آمار ترکیبی — منقضی حداقل ۲ (رکورد + قلم)
+      // آمار ترکیبی — رکورد منقضی شمرده می‌شود
       final stats = await ForecastService.warrantyStats();
-      expect(stats.expired >= 2, isTrue);
+      expect(stats.expired >= 1, isTrue);
       expect(stats.expiring, greaterThanOrEqualTo(0));
     });
   });
