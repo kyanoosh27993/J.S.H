@@ -90,7 +90,7 @@ class _CashboxPageState extends State<CashboxPage> {
     }
     if (!mounted) return;
     final amountCtrl = TextEditingController(text: '${row.remaining}');
-    Future<void> refreshRow(void Function() sbSet) async {
+    Future<void> refreshRow(StateSetter sbSet) async {
       final invoices = await InvoiceRepo.allByTicketMap();
       final inv = invoices[row.ticket.id];
       sbSet(() {

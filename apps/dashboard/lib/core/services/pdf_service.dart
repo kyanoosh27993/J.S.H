@@ -108,23 +108,19 @@ class PdfService {
     // کد QR رسید — فقط کد تیکت (هماهنگ با فرم A5)
     pw.Widget? qr;
     if (ticket.code.isNotEmpty) {
-      try {
-        final qrc =
-            pw.QrCode.fromData(data: ticket.code);
-        qr = pw.Container(
-          padding: const pw.EdgeInsets.all(2),
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: PdfColors.grey400, width: 0.6),
-          ),
-          child: pw.QrImageView(
-            qrCode: qrc,
-            size: 40,
-            padding: const pw.EdgeInsets.zero,
-          ),
-        );
-      } catch (_) {
-        qr = null;
-      }
+      qr = pw.Container(
+        width: 40,
+        height: 40,
+        padding: const pw.EdgeInsets.all(2),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey400, width: 0.6),
+        ),
+        child: pw.BarcodeWidget(
+          barcode: pw.Barcode.qrCode(),
+          data: ticket.code,
+          color: PdfColors.black,
+        ),
+      );
     }
     final signatureImage = _safeImage(signatureBytes);
     doc.addPage(

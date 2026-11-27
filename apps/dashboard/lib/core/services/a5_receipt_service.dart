@@ -101,22 +101,19 @@ class A5ReceiptService {
     // ── کد QR رسید — فقط کد تیکت (مطابق qr_box.dart اما بدون شماره فاکتور) ──
     pw.Widget qrBox({double size = 44}) {
       if (ticket.code.isEmpty) return pw.SizedBox();
-      try {
-        final qr = pw.QrCode.fromData(data: ticket.code);
-        return pw.Container(
-          padding: const pw.EdgeInsets.all(2),
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: PdfColors.grey500, width: 0.6),
-          ),
-          child: pw.QrImageView(
-            qrCode: qr,
-            size: size,
-            padding: const pw.EdgeInsets.zero,
-          ),
-        );
-      } catch (_) {
-        return pw.SizedBox();
-      }
+      return pw.Container(
+        width: size,
+        height: size,
+        padding: const pw.EdgeInsets.all(2),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey500, width: 0.6),
+        ),
+        child: pw.BarcodeWidget(
+          barcode: pw.Barcode.qrCode(),
+          data: ticket.code,
+          color: PdfColors.black,
+        ),
+      );
     }
 
     // ── سربرگ مشترک — فقط از تنظیمات فروشگاه (بند ۱) ──
