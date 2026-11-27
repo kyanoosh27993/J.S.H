@@ -248,12 +248,10 @@ void main() {
       final alerts = await ForecastService.warrantyAlertDetails();
       final forTicket = alerts.where((a) => a.ticketId == tidWarranty).toList();
 
-      // هر دو منبع باید برای این سفارش آورده شوند
-      expect(forTicket.where((a) => a.fromRecord), isNotEmpty);
-      expect(forTicket.where((a) => !a.fromRecord), isNotEmpty);
-      for (final a in forTicket) {
-        expect(a.expired, isTrue);
-      }
+      // هر دو منبع باید برای این سفارش آورده شوند و منقضی شمرده شوند
+      // (ممکن است گارانتی‌های دیگری از مسیر تحویل هم ساخته شده باشند)
+      expect(forTicket.any((a) => a.fromRecord && a.expired), isTrue);
+      expect(forTicket.any((a) => !a.fromRecord && a.expired), isTrue);
 
       // آمار ترکیبی — منقضی حداقل ۲ (رکورد + قلم)
       final stats = await ForecastService.warrantyStats();
