@@ -35,6 +35,10 @@ dependencies:
   local_notifier: ^0.1.6
   # انتخاب پوشه بک‌آپ
   file_selector: ^1.0.3
+  # اتچ عکس با دوربین/گالری گوشی — فاز ۶ب (بند ۱۰)
+  image_picker: ^1.1.2
+  # اسکن بارکد/QR سفارش با دوربین — فاز ۶ب (بند ۱۰)؛ فقط موبایل
+  mobile_scanner: ^5.2.3
 
 dependency_overrides:
   # image 4.11 به archive جدیدتر با decodeLazy نیاز دارد

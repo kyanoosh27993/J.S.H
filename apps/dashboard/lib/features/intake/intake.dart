@@ -15,6 +15,7 @@ import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/a5_receipt_service.dart';
 import '../../core/services/app_session.dart';
+import '../../core/services/attach_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/services/shop_settings_service.dart';
 import '../../core/utils.dart';
@@ -201,7 +202,81 @@ class _IntakePageState extends State<IntakePage> {
       hour: hour,
       dueUnknown: dueUnknown,
     );
+    if (!mounted) return;
+    // ۷) بند ۱۹ — پیشنهاد غیرمسدودکننده اتچ عکس سلامت کالا به سفارش تازه
+    await _offerAttachments(ticket.id!);
     _reset();
+  }
+
+  // ── بند ۱۹ — اتچ عکس در فرم پذیرش ──
+  /// پس از ثبت موفق، دیالوگی با «از دوربین» / «از گالری» و امکان رد شدن؛
+  /// کاربر می‌تواند بدون اتچ ببندد و پس از هر اتچ دوباره پیشنهاد داده می‌شود.
+  Future<void> _offerAttachments(int ticketId) async {
+    while (mounted) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            icon: const Icon(Icons.add_a_photo, size: 30),
+            title: const Text('اتچ عکس سلامت کالا'),
+            content: const Text(
+              'عکس وضعیت ظاهری کالا را همین حالا به سفارش اتچ کنید (اختیاری).',
+              style: TextStyle(fontSize: 12.5, height: 1.7),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'close'),
+                child: const Text('بدون عکس'),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.photo_library, size: 18),
+                label: const Text('از گالری'),
+                onPressed: () => Navigator.pop(ctx, 'gallery'),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.photo_camera, size: 18),
+                label: const Text('از دوربین'),
+                onPressed: () => Navigator.pop(ctx, 'camera'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (choice != 'camera' && choice != 'gallery') return;
+      await _attachOnePhoto(ticketId, fromGallery: choice == 'gallery');
+    }
+  }
+
+  /// یک عکس با دوربین/گالری؛ روی رایانه UnsupportedError → پیام + انتخاب فایل
+  Future<void> _attachOnePhoto(int ticketId, {required bool fromGallery}) async {
+    final mess = ScaffoldMessenger.of(context);
+    try {
+      final path = await AttachService.attachFromCamera(ticketId,
+          fromGallery: fromGallery);
+      if (path == null) {
+        mess.showSnackBar(const SnackBar(content: Text('عکسی انتخاب نشد')));
+        return;
+      }
+      mess.showSnackBar(const SnackBar(content: Text('عکس به سفارش اتچ شد')));
+    } on UnsupportedError {
+      mess.showSnackBar(const SnackBar(
+        content: Text('دوربین فقط روی گوشی/تبلت موجود است'),
+        backgroundColor: Colors.orange,
+      ));
+      final err = await AttachService.attachFromFile(ticketId);
+      if (err != null) {
+        mess.showSnackBar(SnackBar(
+          content: Text(err),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } catch (e) {
+      mess.showSnackBar(SnackBar(
+        content: Text('خطا در گرفتن عکس: $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
   }
 
   Future<void> _successAndPrintDialog({

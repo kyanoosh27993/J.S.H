@@ -4,6 +4,9 @@
 /// باز کردن سند با تایپ شماره (بند ۶ جدید).
 library;
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
@@ -18,6 +21,7 @@ import '../../shared/widgets/data_table_pro.dart';
 import '../../shared/widgets/persian_number_field.dart';
 import '../../shared/widgets/qr_box.dart';
 import '../tickets/ticket_detail.dart';
+import 'barcode_scanner.dart';
 
 /// نتیجه دیالوگ کادر هزینه/تخفیف/خسارت — بند ۱۲
 typedef _Financials = ({
@@ -170,6 +174,39 @@ class _OrdersPageState extends State<OrdersPage> {
   Map<int, String> customerNames = {};
   Map<int, Map<String, Object?>> invoicesByTicket = {};
 
+  // بند ۱۰.۶۰ — نتیجه اسکن بارکد برای جستجو (null = بدون فیلتر اسکن)
+  String? scanQuery;
+
+  // قابلیت‌های موبایل (اسکنر) فقط روی اندروید
+  bool get _isMobile => !kIsWeb && Platform.isAndroid;
+
+  /// بند ۱۰.۶۰ — اسکن بارکد و فیلتر همان جدول (مثل تایپ در کادر جستجو)؛
+  /// کادر جستجو داخل DataTablePro است، پس فیلتر از بیرون روی سطرها اعمال می‌شود.
+  Future<void> _scanAndFilter() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
+    );
+    if (!mounted) return;
+    final c = (code ?? '').trim();
+    if (c.isEmpty) return;
+    setState(() => scanQuery = c);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('جستجو با بارکد: ${toPersianDigits(c)}'),
+    ));
+  }
+
+  /// سطرهای نمایان با فیلتر اسکن — شامل تبدیل ارقام فارسی/انگلیسی
+  List<Ticket> get _visibleTickets {
+    final q = scanQuery?.trim();
+    if (q == null || q.isEmpty) return tickets;
+    final qEn = toEnglishDigits(q);
+    return tickets.where((t) {
+      final idx = '${t.code} ${customerNames[t.customerId] ?? ''}';
+      return idx.contains(q) || idx.contains(qEn);
+    }).toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -307,6 +344,21 @@ class _OrdersPageState extends State<OrdersPage> {
                 icon: const Icon(Icons.search, size: 18),
                 label: const Text('باز کردن با شماره / QR'),
               ),
+              // بند ۱۰.۶۰ — جستجوی بارکدی؛ فقط موبایل
+              if (_isMobile)
+                OutlinedButton.icon(
+                  onPressed: _scanAndFilter,
+                  icon: const Icon(Icons.qr_code_scanner, size: 18),
+                  label: const Text('اسکن بارکد جستجو'),
+                ),
+              if (scanQuery != null && scanQuery!.trim().isNotEmpty)
+                FilterChip(
+                  label: Text(
+                      'فیلتر اسکن: ${toPersianDigits(scanQuery!.trim())}',
+                      style: const TextStyle(fontSize: 12)),
+                  onSelected: null,
+                  onDeleted: () => setState(() => scanQuery = null),
+                ),
               AppText(
                 'کاربر: ${me?.bestName ?? '-'}',
                 style: TextStyle(
@@ -323,7 +375,8 @@ class _OrdersPageState extends State<OrdersPage> {
                     ? const Center(child: Text('سفارشی ثبت نشده است'))
                     : SingleChildScrollView(
                         child: DataTablePro<Ticket>(
-                          rows: tickets,
+                          // بند ۱۰.۶۰ — سطرها با نتیجه اسکن بارکد فیلتر شده‌اند
+                          rows: _visibleTickets,
                           tableId: 'orders',
                           searchIndex: (t) =>
                               '${t.code} ${customerNames[t.customerId] ?? ''}',

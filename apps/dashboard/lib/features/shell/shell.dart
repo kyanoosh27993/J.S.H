@@ -3,6 +3,9 @@
 /// منوی کشویی در موبایل، منوی آبشاری بخش‌ها، سوییچر سریع تم و ترنزیشن صفحات.
 library;
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
@@ -163,7 +166,11 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final cfg = AppThemeScope.of(context);
     final p = cfg.palette;
-    final isNarrow = MediaQuery.of(context).size.width < 760;
+    // بند ۵ — سایدبار: روی اندروید (تبلت هم) همیشه نسخه کشویی با عرض حداکثر
+    // ۳۰۰ پیکسل؛ kIsWeb اول چک می‌شود تا dart:io روی وب هرگز فراخوانی نشود.
+    final isNarrow = kIsWeb ||
+        Platform.isAndroid ||
+        MediaQuery.of(context).size.width < 760;
     // اگر صفحه جاری برای این کاربر مجاز نیست، به نخستین صفحه مجاز برمی‌گردیم
     final visible = _visibleIndexes;
     if (!visible.contains(index)) index = visible.first;

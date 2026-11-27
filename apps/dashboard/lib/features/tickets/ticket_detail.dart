@@ -3,6 +3,7 @@ library;
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
@@ -13,7 +14,9 @@ import '../../core/services/attach_service.dart';
 import '../../core/services/delivery_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';
+import '../../shared/widgets/attachment_viewer.dart';
 import '../../shared/widgets/qr_box.dart';
+import '../orders/barcode_scanner.dart';
 
 class TicketDetailPage extends StatefulWidget {
   final int ticketId;
@@ -80,6 +83,9 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   }
 
   // ── فاز ۸ (بند ۷ جدید) — اتچ عکس سلامت کالا ──
+  /// بند ۱۰/۱۹ — قابلیت‌های موبایل (دوربین/اسکنر) فقط روی اندروید
+  bool get _isMobile => !kIsWeb && Platform.isAndroid;
+
   Future<void> _attachFromFile() async {
     final err = await AttachService.attachFromFile(widget.ticketId);
     if (!mounted) return;
@@ -148,28 +154,61 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     });
   }
 
-  Future<void> _deleteAttach(Map<String, Object?> a) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('حذف عکس'),
-        content: const Text('این عکس از سفارش حذف شود؟'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('انصراف')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    await AttachService.delete((a['id'] ?? 0) as int);
+  /// بند ۱۰/۱۹ — اتچ عکس با دوربین یا گالری گوشی (image_picker؛ فقط موبایل).
+  /// روی رایانه UnsupportedError می‌آید: پیام + بازگشت به انتخاب فایل
+  Future<void> _attachFromCamera({required bool fromGallery}) async {
+    String? err;
+    try {
+      final path = await AttachService.attachFromCamera(widget.ticketId,
+          fromGallery: fromGallery);
+      if (path == null) return; // کاربر انصراف داد
+    } on UnsupportedError {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('دوربین فقط روی گوشی/تبلت موجود است'),
+        backgroundColor: Colors.orange,
+      ));
+      await _attachFromFile();
+      return;
+    } catch (e) {
+      err = 'خطا در گرفتن عکس: $e';
+    }
     if (!mounted) return;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
     setState(() {
       attachments = AttachService.list(widget.ticketId);
     });
+  }
+
+  // ── بند ۱۰/۱۹ — اسکن بارکد از هدر سفارش ──
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
+    );
+    if (!mounted) return;
+    final c = (code ?? '').trim();
+    if (c.isEmpty) return;
+    // اگر کد همین سفارش باشد نیازی به کار اضافه نیست — فقط نمایش نتیجه اسکن
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('بارکد اسکن‌شده: ${toPersianDigits(c)}'),
+    ));
+  }
+
+  // ── بند ۱۰.۶۳ — کلیک روی عکس: نمایشگر تمام‌صفحه (زوم/حذف/چاپ) ──
+  Future<void> _openAttachment(Map<String, Object?> a) async {
+    final deleted = await AttachmentViewerPage.open(context, a);
+    if (deleted == true && mounted) {
+      setState(() {
+        attachments = AttachService.list(widget.ticketId);
+      });
+    }
   }
 
   // بند ۱۰.۶۹ — قلم خسارت در جمع حساب نمی‌شود؛ تخفیف با قیمت منفی جمع را کم می‌کند
@@ -298,7 +337,18 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: Text('سفارش ${toPersianDigits(ticket.code)}')),
+        appBar: AppBar(
+          title: Text('سفارش ${toPersianDigits(ticket.code)}'),
+          // بند ۱۰/۱۹ — اسکن بارکد کنار هدر کد سفارش (فقط موبایل)
+          actions: [
+            if (_isMobile)
+              IconButton(
+                tooltip: 'اسکن بارکد',
+                icon: const Icon(Icons.qr_code_scanner),
+                onPressed: _scanBarcode,
+              ),
+          ],
+        ),
         body: Padding(
           padding: const EdgeInsets.all(14),
           child: ListView(
@@ -403,18 +453,30 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                 ),
               ),
               const Divider(height: 24),
-              // فاز ۸ (بند ۷ جدید) — عکس‌های سلامت کالا
-              Row(
+              // فاز ۸ (بند ۷ جدید) — عکس‌های سلامت کالا؛
+              // بند ۱۰/۱۹ — دکمه‌های دوربین و گالری (روی رایانه با پیام به فایل برمی‌گردد)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text('عکس‌های سلامت کالا',
                       style: Theme.of(context).textTheme.titleMedium),
-                  const Spacer(),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.photo_camera, size: 18),
+                    label: const Text('از دوربین', style: TextStyle(fontSize: 12)),
+                    onPressed: () => _attachFromCamera(fromGallery: false),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.photo_library, size: 18),
+                    label: const Text('از گالری', style: TextStyle(fontSize: 12)),
+                    onPressed: () => _attachFromCamera(fromGallery: true),
+                  ),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.add_photo_alternate, size: 18),
                     label: const Text('افزودن عکس', style: TextStyle(fontSize: 12)),
                     onPressed: _attachFromFile,
                   ),
-                  const SizedBox(width: 8),
                   FilledButton.tonalIcon(
                     icon: const Icon(Icons.smartphone, size: 18),
                     label: const Text('از گوشی (وای‌فای)', style: TextStyle(fontSize: 12)),
@@ -437,9 +499,10 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                     children: [
                       for (final a in list)
                         GestureDetector(
-                          onTap: () => _deleteAttach(a),
+                          // بند ۱۰.۶۳ — کلیک: نمایشگر تمام‌صفحه با زوم/حذف/چاپ
+                          onTap: () => _openAttachment(a),
                           child: Tooltip(
-                            message: 'حذف — ${(a['created_at'] ?? '') as String}',
+                            message: 'نمایش — ${(a['created_at'] ?? '') as String}',
                             child: Container(
                               width: 84,
                               height: 84,
