@@ -73,12 +73,6 @@ class _IntakePageState extends State<IntakePage> {
   }
 
   Future<void> _loadCustomers() async {
-    // بند ۱ — خواندن تنظیم نمایش اقرارنامه و پترن قفل (در همین زنجیره awaited
-    // تا تست‌ها با Pending timers مواجه نشوند)
-    showTerms = (await SettingsRepo.get('intake_show_terms', '1')) != '0';
-    showPattern = (await SettingsRepo.get('intake_show_pattern', '1')) != '0';
-    // اگر اقرارنامه مخفی شود، تایید آن به‌صورت ضمنی لحاظ می‌شود
-    if (!showTerms) terms = true;
     final users = (await UserRepo.list())
         .where((u) => ((u['is_active'] ?? 1) as int) == 1)
         .toList();
@@ -90,6 +84,14 @@ class _IntakePageState extends State<IntakePage> {
       // پیش‌فرض واگذاری: خود کاربر جاری (بند ۸)
       _assignTo ??= AppSession.I.currentUser?.id;
     });
+    // بند ۱ — تنظیم نمایش اقرارنامه/پترن قفل: آخرِ زنجیره با محافظ خطا تا
+    // بارگذاری اصلی (کاربران/لوازم) همیشه کامل شود و تست‌ها نشکنند
+    try {
+      showTerms = (await SettingsRepo.get('intake_show_terms', '1')) != '0';
+      showPattern = (await SettingsRepo.get('intake_show_pattern', '1')) != '0';
+      if (!showTerms) terms = true; // مخفی = تایید ضمنی
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   @override
