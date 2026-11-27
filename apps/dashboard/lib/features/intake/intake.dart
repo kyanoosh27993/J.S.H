@@ -70,19 +70,15 @@ class _IntakePageState extends State<IntakePage> {
   void initState() {
     super.initState();
     _loadCustomers();
-    _loadFormVisibility();
-  }
-
-  /// بند ۱ — خواندن تنظیم نمایش اقرارنامه و پترن قفل
-  Future<void> _loadFormVisibility() async {
-    showTerms = (await SettingsRepo.get('intake_show_terms', '1')) != '0';
-    showPattern = (await SettingsRepo.get('intake_show_pattern', '1')) != '0';
-    // اگر اقرارنامه مخفی شود، تایید آن به‌صورت ضمنی لحاظ می‌شود
-    if (!showTerms && mounted) setState(() => terms = true);
-    if (mounted) setState(() {});
   }
 
   Future<void> _loadCustomers() async {
+    // بند ۱ — خواندن تنظیم نمایش اقرارنامه و پترن قفل (در همین زنجیره awaited
+    // تا تست‌ها با Pending timers مواجه نشوند)
+    showTerms = (await SettingsRepo.get('intake_show_terms', '1')) != '0';
+    showPattern = (await SettingsRepo.get('intake_show_pattern', '1')) != '0';
+    // اگر اقرارنامه مخفی شود، تایید آن به‌صورت ضمنی لحاظ می‌شود
+    if (!showTerms) terms = true;
     final users = (await UserRepo.list())
         .where((u) => ((u['is_active'] ?? 1) as int) == 1)
         .toList();
