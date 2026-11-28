@@ -175,7 +175,8 @@ class _PairFormState extends State<PairForm> {
                   controller: hostCtrl,
                   decoration: const InputDecoration(
                     labelText: 'آدرس شبکه لوکال کامپیوتر',
-                    hintText: 'مثال: 192.168.1.5:3000',
+                    hintText: 'مثال: 192.168.1.5:3000 یا با http://',
+                    helperText: 'همان آدرس نمایش‌داده‌شده روی PC را کامل کپی کنید؛ با یا بدون http:// هر دو درست می‌شود',
                     border: OutlineInputBorder(),
                   ),
                 ),

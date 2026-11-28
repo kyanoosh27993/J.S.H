@@ -32,10 +32,22 @@ class PairService {
 
   static const String keyHost = 'mobile_pc_host'; // مثال: 192.168.1.5:3000
 
-  static Future<String?> host() async =>
-      (await SettingsRepo.get(keyHost, '')).isEmpty
-          ? null
-          : await SettingsRepo.get(keyHost, '');
+  /// v0.12.6 — نرمال‌سازی آدرس: با یا بدون http:// و اسلش انتهایی درست می‌شود.
+  /// کاربر آدرس را از PC کپی می‌کند («http://192.168.133.5:3000»)؛ اگر scheme
+  /// حذف نشود درخواست «http://http://…» ساخته می‌شود و lookup هاست «http» شکست
+  /// می‌خورد (SocketException: Failed host lookup: 'http').
+  static String normalizeHost(String raw) {
+    var h = raw.trim();
+    h = h.replaceAll(RegExp(r'^https?://', caseSensitive: false), '');
+    h = h.split('/').first; // اسلش انتهایی یا مسیر اضافه را می‌بُرد
+    return h.trim();
+  }
+
+  static Future<String?> host() async {
+    final v = await SettingsRepo.get(keyHost, '');
+    if (v.isEmpty) return null;
+    return normalizeHost(v);
+  }
 
   static Future<String?> token() async {
     final t = await SettingsRepo.get('mobile_pc_token', '');
@@ -43,14 +55,14 @@ class PairService {
   }
 
   static Future<void> save(String host, String token) async {
-    await SettingsRepo.set(keyHost, host.trim());
+    await SettingsRepo.set(keyHost, normalizeHost(host));
     await SettingsRepo.set('mobile_pc_token', token.trim());
   }
 
   /// جفت‌سازی اولیه — آدرس + کد ۶ رقمی نمایش‌داده‌شده روی PC
   static Future<PairResult> pair(String host, String pcCode) async {
     try {
-      final r = await _post('http://$host/api/pair', {
+      final r = await _post('http://${normalizeHost(host)}/api/pair', {
         'pcCode': pcCode.trim(),
         'deviceName': 'اندروید ${Platform.operatingSystemVersion.split(' ').first}',
       });
