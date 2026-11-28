@@ -6,7 +6,7 @@ library;
 
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
@@ -15,6 +15,8 @@ import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/a5_receipt_service.dart';
 import '../../core/services/app_session.dart';
+import '../../core/services/attach_service.dart';
+import '../../core/services/print_form_service.dart';
 import '../../core/services/auth_service.dart' show kRoleCreator;
 import '../../core/utils.dart';
 import '../../shared/widgets/app_text.dart';
@@ -144,6 +146,39 @@ Future<void> printTicketReceipt(BuildContext context, Ticket t) async {
       throw Exception('مشتری یا دستگاه سفارش یافت نشد');
     }
     final items = await TicketItemRepo.byTicket(t.id!);
+    // v0.14.0 — اگر کاربر قالب چاپ سفارشی برای رسید پذیرش ساخته باشد،
+    // خروجی با همان جانمایی (سربرگ/مهر/امضا/لوازم) تولید می‌شود
+    final tpl = await PrintFormService.load('intake');
+    if (tpl != null) {
+      Uint8List? sig;
+      try {
+        if (t.signaturePath.isNotEmpty) {
+          sig = await File(t.signaturePath).readAsBytes();
+        }
+      } catch (_) {}
+      final data = await PrintFormService.intakeData(
+          ticket: t, customer: customer, device: device, shop: shop);
+      final path = await PrintFormService.build(
+        t: tpl,
+        data: data,
+        items: [
+          for (final i in items)
+            [
+              i.description,
+              '${i.qty}',
+              '${i.price}',
+              '${i.qty * i.price}',
+              i.kind == 'part' ? 'قطعه' : 'خدمات',
+            ]
+        ],
+        tableTitle: 'اقلام سفارش',
+        signatureBytes: sig,
+      );
+      mess.showSnackBar(SnackBar(
+          content: Text('PDF رسید با قالب سفارشی ذخیره شد')));
+      await AttachService.openSystem(path);
+      return;
+    }
     final path = await A5ReceiptService.build(
       shop: shop,
       ticket: t,

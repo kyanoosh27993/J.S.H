@@ -10,6 +10,8 @@ import '../../core/db/db.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
+import '../../core/services/attach_service.dart';
+import '../../core/services/print_form_service.dart';
 import '../../core/utils.dart';
 import '../../shared/widgets/app_text.dart';
 import '../../shared/widgets/data_table_pro.dart';
@@ -207,6 +209,37 @@ class _InvoicesPageState extends State<InvoicesPage> {
           content:
               Text('PDF ثبت‌شده سند: ${toPersianDigits(pdfPath)}')));
       return;
+    }
+    // v0.14.0 — اگر کاربر قالب چاپ سفارشی ساخته باشد، خروجی دقیقاً با
+    // همان جانمایی (سربرگ/مهر/امضا/اقلام) چاپ می‌شود
+    final tpl = await PrintFormService.load(r.kind == InvoiceRepo.kindPre
+        ? 'invoice_pre'
+        : 'invoice_final');
+    if (tpl != null) {
+      try {
+        final customer =
+            await CustomerRepo.byId(r.ticket.customerId);
+        final device =
+            await DeviceRepo.byId(r.ticket.deviceId);
+        if (customer != null && device != null) {
+          final data = await PrintFormService.invoiceData(
+              inv: r.inv,
+              ticket: r.ticket,
+              customer: customer,
+              device: device);
+          final items =
+              await PrintFormService.invoiceItemsRows(r.ticket.id!);
+          final path = await PrintFormService.build(
+              t: tpl, data: data, items: items);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('PDF با قالب سفارشی ساخته شد')));
+          await AttachService.openSystem(path);
+          return;
+        }
+      } catch (_) {
+        // خطا در چاپ قالب سفارشی — به قالب پیش‌فرض برمی‌گردیم
+      }
     }
     await printTicketReceipt(context, r.ticket);
   }

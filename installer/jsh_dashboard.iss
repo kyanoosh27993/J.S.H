@@ -22,7 +22,7 @@
 #define MyAppName "J.S.H Service Dashboard"
 #define MyAppNameFa "داشبورد تعمیرات و خدمات"
 ; هم‌گام با version در apps/dashboard/pubspec.yaml و AppInfo.version
-#define MyAppVersion "0.13.0"
+#define MyAppVersion "0.14.0"
 #define MyAppPublisher "آورین سگال بی همتا"
 #define MyAppExeName "jsh_service_dashboard.exe"
 #define MyAppDbName "jsh_dashboard.db"

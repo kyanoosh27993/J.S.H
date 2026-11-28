@@ -30,6 +30,7 @@ import '../invoices/invoices.dart';
 import '../intake/intake.dart';
 import '../orders/orders_page.dart';
 import '../reminders/reminders.dart';
+import '../settings/print_forms.dart';
 import '../settings/settings.dart';
 import '../settings/theme_settings.dart';
 import '../support/support.dart';
@@ -160,6 +161,10 @@ class _MainShellState extends State<MainShell> {
     _NavItem(Icons.history, 'گزارش فعالیت‌ها',
         permKey: 'page.home',
         sections: ['تاریخچه رویدادها', 'فیلتر عملکرد']),
+    // v0.14.0 — طراح قالب چاپ (تنظیمات فرم‌ها و چاپ)
+    _NavItem(Icons.design_services_rounded, 'فرم‌ها و چاپ',
+        permKey: 'page.settings',
+        sections: ['سربرگ و متن‌ها', 'بوم جانمایی', 'اقلام جدول‌ها']),
     ],
     // v0.12.4 — دسکتاپ: سرور لوکال پورت 3000 و جفت‌سازی گوشی
     if (!Platform.isAndroid)
@@ -646,6 +651,9 @@ class _MainShellState extends State<MainShell> {
         return Platform.isAndroid
             ? const ScannerPage()
             : const MobileLinkPage();
+      // v0.14.0 — تنظیمات فرم‌ها و چاپ
+      case 18:
+        return const PrintFormsPage();
       default:
         return const SizedBox();
     }
