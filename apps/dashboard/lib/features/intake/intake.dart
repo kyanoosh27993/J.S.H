@@ -872,23 +872,37 @@ class _IntakePageState extends State<IntakePage> {
 
   // ═══ v0.12.8 — برچسب فقط از لیست مدیریت‌شده ═══
   Widget _tagField() {
+    // نکته: عمداً از DropdownButtonFormField استفاده نشده تا فایندرهای
+    // تست‌های موجود (ساعت تحویل) با byType مبهم نشوند.
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(children: [
         Expanded(
-          child: DropdownButtonFormField<String>(
-            initialValue: cTag.text.isEmpty ? null : cTag.text,
-            items: [
+          child: PopupMenuButton<String>(
+            enabled: tagOptions.isNotEmpty,
+            tooltip: 'انتخاب برچسب از لیست',
+            onSelected: (v) => setState(() => cTag.text = v),
+            itemBuilder: (_) => [
               for (final t in tagOptions)
-                DropdownMenuItem(value: t, child: Text(t)),
+                PopupMenuItem(value: t, child: Text(t)),
             ],
-            onChanged: (v) => setState(() => cTag.text = v ?? ''),
-            decoration: InputDecoration(
-              labelText: 'برچسب (از لیست — مدیریت با دکمه کنار)',
-              suffixIcon: IconButton(
-                tooltip: 'مدیریت لیست برچسب‌ها',
-                icon: const Icon(Icons.settings_outlined, size: 19),
-                onPressed: _manageTags,
+            child: InputDecorator(
+              isEmpty: cTag.text.isEmpty,
+              decoration: InputDecoration(
+                labelText: 'برچسب (از لیست — مدیریت با دکمه کنار)',
+                suffixIcon: IconButton(
+                  tooltip: 'مدیریت لیست برچسب‌ها',
+                  icon: const Icon(Icons.settings_outlined, size: 19),
+                  onPressed: _manageTags,
+                ),
+              ),
+              child: Text(
+                cTag.text.isEmpty
+                    ? (tagOptions.isEmpty ? 'لیست خالی — مدیریت کنید' : 'انتخاب کنید')
+                    : cTag.text,
+                style: TextStyle(
+                    fontSize: 13.5,
+                    color: cTag.text.isEmpty ? null : null),
               ),
             ),
           ),
@@ -1032,17 +1046,21 @@ class _IntakePageState extends State<IntakePage> {
     // فاز ۳ (F-03): روی صفحه باریک گوشی، فیلدهای جفت زیر هم قرار می‌گیرند
     final narrow = MediaQuery.of(context).size.width < 480;
     final fa = TextField(controller: a, decoration: InputDecoration(labelText: la));
-    final fb = TextField(controller: b!, decoration: InputDecoration(labelText: lb!));
+    // فیلد دوم تنبل ساخته می‌شود — فراخوانی تک‌فیلدی نباید کرش کند
+    Widget? fb;
+    if (b != null) {
+      fb = TextField(controller: b, decoration: InputDecoration(labelText: lb!));
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: narrow
           ? Column(children: [
               fa,
-              if (b != null) ...[const SizedBox(height: 8), fb],
+              if (fb != null) ...[const SizedBox(height: 8), fb],
             ])
           : Row(children: [
               Expanded(child: fa),
-              if (b != null) ...[
+              if (fb != null) ...[
                 const SizedBox(width: 10),
                 Expanded(child: fb),
               ],
