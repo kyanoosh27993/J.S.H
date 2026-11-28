@@ -417,9 +417,9 @@ class _PrintFormsPageState extends State<PrintFormsPage> {
                       onTap: () => setState(() => selectedId = b.id),
                       onPanUpdate: (d) {
                         setState(() {
-                          b.x = (b.x + d.dx / pageW * 100)
+                          b.x = (b.x + d.delta.dx / pageW * 100)
                               .clamp(0.0, 100.0);
-                          b.y = (b.y + d.dy / pageH * 100)
+                          b.y = (b.y + d.delta.dy / pageH * 100)
                               .clamp(0.0, 100.0);
                         });
                       },
@@ -642,7 +642,11 @@ class _PrintFormsPageState extends State<PrintFormsPage> {
 
   Widget _alignPickerInline(PrintBlock b) => Row(children: [
         const Text('چینش: ', style: TextStyle(fontSize: 12.5)),
-        for (final e in const {'right': 'راست', 'center': 'وسط', 'left': 'چپ'})
+        for (final e in const [
+            MapEntry('right', 'راست'),
+            MapEntry('center', 'وسط'),
+            MapEntry('left', 'چپ'),
+          ])
           Padding(
             padding: const EdgeInsets.only(left: 6),
             child: ChoiceChip(

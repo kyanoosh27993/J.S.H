@@ -13,6 +13,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:pdf/pdf.dart';
@@ -240,9 +241,15 @@ class PrintFormService {
     pw.MemoryImage? sellerImg;
     pw.MemoryImage? custImg;
     try {
-      if (logo != null && logo.isNotEmpty) logoImg = pw.MemoryImage(logo);
-      if (stamp != null && stamp.isNotEmpty) stampImg = pw.MemoryImage(stamp);
-      if (seller != null && seller.isNotEmpty) sellerImg = pw.MemoryImage(seller);
+      if (logo != null && logo.isNotEmpty) {
+        logoImg = pw.MemoryImage(Uint8List.fromList(logo));
+      }
+      if (stamp != null && stamp.isNotEmpty) {
+        stampImg = pw.MemoryImage(Uint8List.fromList(stamp));
+      }
+      if (seller != null && seller.isNotEmpty) {
+        sellerImg = pw.MemoryImage(Uint8List.fromList(seller));
+      }
       if (signatureBytes != null && signatureBytes.isNotEmpty) {
         custImg = pw.MemoryImage(signatureBytes);
       }
@@ -320,7 +327,7 @@ class PrintFormService {
               style: pw.TextStyle(font: font, fontSize: size));
         case 'totals':
           final lines = <pw.Widget>[];
-          String line(String l, String v) => pw.Row(
+          pw.Widget line(String l, String v) => pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(l,
