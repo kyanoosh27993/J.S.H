@@ -65,13 +65,15 @@ class InstallReportService {
     required int installCount,
     required String hardwareReport,
   }) async {
-    final remaining = AppInfo.maxInstalls - installCount;
+    // v0.12.8 — سقف واقعی از کد لایسنس (maxReinstalls)
+    final max = await LicenseService.maxLimit();
+    final remaining = max - installCount;
     final now = DateTime.now();
     final body = 'گزارش نصب برنامه «داشبورد تعمیرات و خدمات»\n\n'
         'نام خریدار: $buyerName\n'
         'ایمیل ثبت‌شده خریدار: $userEmail\n'
         'تاریخ نصب: ${now.toIso8601String()}\n'
-        'شماره نصب فعلی: $installCount از ${AppInfo.maxInstalls}\n'
+        'شماره نصب فعلی: $installCount از $max\n'
         'نصب باقیمانده مجاز: ${remaining < 0 ? 0 : remaining}\n\n'
         'مشخصات دستگاه و سخت‌افزار:\n$hardwareReport\n\n'
         'پروژه: ${AppInfo.projectId} — نسخه: ${AppInfo.version}\n'

@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../../core/theme/theme_config.dart';
 import '../../core/services/activation_service.dart';
+import '../../core/services/license_service.dart';
 import '../../core/services/app_session.dart';
 import '../../core/utils.dart';
 import '../../shared/widgets/app_text.dart';
@@ -216,13 +217,16 @@ class _MainShellState extends State<MainShell> {
                 onSelected: _onSection,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AppText('بخش‌ها', style: TextStyle(fontSize: 12.5, color: p.textSecondary)),
-                      Icon(Icons.expand_more, size: 17, color: p.textSecondary),
-                    ],
-                  ),
+                  // v0.12.8 — در صفحه باریک فقط آیکن تا روی ☰ ناودان نشود
+                  child: isNarrow
+                      ? Icon(Icons.grid_view, size: 19, color: p.textSecondary)
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppText('بخش‌ها', style: TextStyle(fontSize: 12.5, color: p.textSecondary)),
+                            Icon(Icons.expand_more, size: 17, color: p.textSecondary),
+                          ],
+                        ),
                 ),
               ),
             // سوییچر سریع تم — سه پیش‌فرض
@@ -255,13 +259,15 @@ class _MainShellState extends State<MainShell> {
                   ),
               ],
             ),
-            IconButton(
-              tooltip: 'شخصی‌سازی کامل ظاهر',
-              icon: Icon(Icons.tune, size: 20, color: p.textSecondary),
-              onPressed: () => setState(() => index = 14),
-            ),
+            // v0.12.8 — در صفحه باریک حذف تا منو جا باز کند
+            if (!isNarrow)
+              IconButton(
+                tooltip: 'شخصی‌سازی کامل ظاهر',
+                icon: Icon(Icons.tune, size: 20, color: p.textSecondary),
+                onPressed: () => setState(() => index = 14),
+              ),
             // فاز ۲ — کاربر جاری + خروج
-            if (me != null)
+            if (me != null && !isNarrow)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: Tooltip(
@@ -293,9 +299,12 @@ class _MainShellState extends State<MainShell> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Center(
-                child: AppNumText(
-                  'نصب ${toPersianDigits('${widget.session.license.installCount}')} از ${toPersianDigits('${AppInfo.maxInstalls}')}',
-                  style: TextStyle(fontSize: 12, color: p.textSecondary),
+                child: FutureBuilder<int>(
+                  future: LicenseService.maxLimit(),
+                  builder: (ctx, snap) => AppNumText(
+                    'نصب ${toPersianDigits('${widget.session.license.installCount}')} از ${toPersianDigits('${snap.data ?? AppInfo.maxInstalls}')}',
+                    style: TextStyle(fontSize: 12, color: p.textSecondary),
+                  ),
                 ),
               ),
             ),

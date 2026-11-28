@@ -9,7 +9,11 @@
 /// - لوازم همراه از تنظیمات (بند ۱۰)؛ پس از ثبت، فرم سه‌برگی A5 (بند ۱۰+۶)
 library;
 
+import 'dart:convert';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/models.dart';
 import '../../core/repos.dart';
@@ -66,6 +70,11 @@ class _IntakePageState extends State<IntakePage> {
   List<Map<String, Object?>> techUsers = [];
   int? _assignTo;
 
+  // v0.12.8 — برچسب فقط از لیست مدیریت‌شده
+  List<String> tagOptions = [];
+  // v0.12.8 — ضمیمه‌های انتخاب‌شده قبل از ثبت پذیرش
+  final List<XFile> _pending = [];
+
   @override
   void initState() {
     super.initState();
@@ -74,9 +83,21 @@ class _IntakePageState extends State<IntakePage> {
 
   Future<void> _loadCustomers() async {
     final users = (await UserRepo.list())
-        .where((u) => ((u['is_active'] ?? 1) as int) == 1)
+        .where((u) =>
+            ((u['is_active'] ?? 1) as int) == 1 &&
+            // v0.12.8 — سازنده برنامه هرگز در واگذاری تشخیص نمی‌آید
+            (u['role'] != 'creator'))
         .toList();
     final acc = await ShopSettingsService.loadAccessories();
+    // v0.12.8 — لیست برچسب‌های مدیریت‌شده (تنظیمات)
+    try {
+      final raw = await SettingsRepo.get('customer_tags', '[]');
+      final list = (jsonDecode(raw) as List<dynamic>)
+          .map((e) => e.toString())
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+      if (mounted) setState(() => tagOptions = list);
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       techUsers = users;
@@ -202,6 +223,21 @@ class _IntakePageState extends State<IntakePage> {
       await ReminderService.ensureForTicket(ticket, lead, hour);
     }
 
+    // v0.12.8 — اتچ همه ضمیمه‌های انتخاب‌شده قبل از ثبت، بلافاصله پس از ساخت سفارش
+    for (final f in List<XFile>.from(_pending)) {
+      try {
+        final ext = f.name.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
+        final err = await AttachService.attachBytes(
+            ticket.id!, await f.readAsBytes(), ext,
+            note: 'مستندات پذیرش');
+        if (err != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('${f.name}: $err'),
+              backgroundColor: Colors.orange));
+        }
+      } catch (_) {}
+    }
+    _pending.clear();
     if (!mounted) return;
     // ۶) گفت‌وگوی موفقیت + فرم چاپ سه‌برگی A5 (بند ۱۰ + بند ۶)
     await _successAndPrintDialog(
@@ -484,6 +520,7 @@ class _IntakePageState extends State<IntakePage> {
         c.clear();
       }
       accessories.clear();
+      _pending.clear();
       terms = false;
       pickedDue = null;
       pickedIntake = null;
@@ -565,7 +602,8 @@ class _IntakePageState extends State<IntakePage> {
                 _two(cName, 'نام و نام خانوادگی *', cFather, 'نام پدر'),
                 _two(cNid, 'کد ملی (۱۰ رقم) / شناسه ملی شرکت (۱۱ رقم)',
                     cPhone, 'تلفن همراه'),
-                _two(cAddress, 'آدرس', cTag, 'برچسب'),
+                _two(cAddress, 'آدرس'),
+                _tagField(),
               ]),
             const Divider(height: 24),
             // تاریخ پذیرش — بند ۱۰: پیش‌فرض امروز، قابل تغییر
@@ -727,6 +765,8 @@ class _IntakePageState extends State<IntakePage> {
               ),
             if (showPattern) const SizedBox(height: 12),
             const SizedBox(height: 12),
+            // v0.12.8 — ضمیمه عکس/فایل قبل از ثبت پذیرش
+            _pendingAttachments(),
             Wrap(
               spacing: 10,
               runSpacing: 8,
@@ -830,19 +870,182 @@ class _IntakePageState extends State<IntakePage> {
     return result;
   }
 
-  Widget _two(TextEditingController a, String la, TextEditingController b, String lb) {
+  // ═══ v0.12.8 — برچسب فقط از لیست مدیریت‌شده ═══
+  Widget _tagField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            initialValue: cTag.text.isEmpty ? null : cTag.text,
+            items: [
+              for (final t in tagOptions)
+                DropdownMenuItem(value: t, child: Text(t)),
+            ],
+            onChanged: (v) => setState(() => cTag.text = v ?? ''),
+            decoration: InputDecoration(
+              labelText: 'برچسب (از لیست — مدیریت با دکمه کنار)',
+              suffixIcon: IconButton(
+                tooltip: 'مدیریت لیست برچسب‌ها',
+                icon: const Icon(Icons.settings_outlined, size: 19),
+                onPressed: _manageTags,
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  /// مدیریت لیست برچسب‌ها — افزودن/حذف و ذخیره در تنظیمات
+  Future<void> _manageTags() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: StatefulBuilder(
+          builder: (ctx, setD) => AlertDialog(
+            title: const Text('مدیریت لیست برچسب‌ها'),
+            content: SizedBox(
+              width: 320,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final t in tagOptions)
+                      InputChip(
+                        label: Text(t, style: const TextStyle(fontSize: 12)),
+                        onDeleted: () =>
+                            setD(() => tagOptions.remove(t)),
+                      ),
+                    if (tagOptions.isEmpty)
+                      const Text('هنوز برچسبی ثبت نشده است',
+                          style: TextStyle(fontSize: 12)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: ctrl,
+                  decoration: InputDecoration(
+                    labelText: 'برچسب جدید',
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () {
+                        final v = ctrl.text.trim();
+                        if (v.isNotEmpty && !tagOptions.contains(v)) {
+                          setD(() {
+                            tagOptions.add(v);
+                            ctrl.clear();
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('انصراف')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('ذخیره')),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    await SettingsRepo.set('customer_tags', jsonEncode(tagOptions));
+    setState(() {});
+  }
+
+  // ═══ v0.12.8 — ضمیمه عکس/فایل قبل از ثبت پذیرش ═══
+  Widget _pendingAttachments() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 8, runSpacing: 6, children: [
+          TextButton.icon(
+            onPressed: () => _pickPending('camera'),
+            icon: const Icon(Icons.photo_camera, size: 18),
+            label: const Text('عکس با دوربین'),
+          ),
+          TextButton.icon(
+            onPressed: () => _pickPending('gallery'),
+            icon: const Icon(Icons.photo_library, size: 18),
+            label: const Text('از گالری'),
+          ),
+          TextButton.icon(
+            onPressed: () => _pickPending('file'),
+            icon: const Icon(Icons.attach_file, size: 18),
+            label: const Text('از فایل (رایانه)'),
+          ),
+        ]),
+        if (_pending.isNotEmpty)
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final f in _pending)
+                InputChip(
+                  label: Text(f.name,
+                      style: const TextStyle(fontSize: 11.5)),
+                  avatar: const Icon(Icons.description, size: 15),
+                  onDeleted: () =>
+                      setState(() => _pending.remove(f)),
+                ),
+            ],
+          ),
+      ]),
+    );
+  }
+
+  Future<void> _pickPending(String mode) async {
+    try {
+      XFile? f;
+      if (mode == 'file') {
+        final picked = await openFile();
+        if (picked != null) f = XFile(picked.path);
+      } else if (mode == 'camera') {
+        f = await ImagePicker()
+            .pickImage(source: ImageSource.camera);
+      } else {
+        f = await ImagePicker()
+            .pickImage(source: ImageSource.gallery);
+      }
+      if (f == null) return;
+      setState(() => _pending.add(f!));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('خطا در انتخاب فایل: $e'),
+          backgroundColor: Colors.red));
+    }
+  }
+
+  Widget _two(TextEditingController a, String la,
+      [TextEditingController? b, String? lb]) {
     // فاز ۳ (F-03): روی صفحه باریک گوشی، فیلدهای جفت زیر هم قرار می‌گیرند
     final narrow = MediaQuery.of(context).size.width < 480;
     final fa = TextField(controller: a, decoration: InputDecoration(labelText: la));
-    final fb = TextField(controller: b, decoration: InputDecoration(labelText: lb));
+    final fb = TextField(controller: b!, decoration: InputDecoration(labelText: lb!));
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: narrow
-          ? Column(children: [fa, const SizedBox(height: 8), fb])
+          ? Column(children: [
+              fa,
+              if (b != null) ...[const SizedBox(height: 8), fb],
+            ])
           : Row(children: [
               Expanded(child: fa),
-              const SizedBox(width: 10),
-              Expanded(child: fb),
+              if (b != null) ...[
+                const SizedBox(width: 10),
+                Expanded(child: fb),
+              ],
             ]),
     );
   }

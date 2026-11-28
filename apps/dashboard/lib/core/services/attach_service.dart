@@ -130,6 +130,37 @@ class AttachService {
     return (null, target);
   }
 
+  /// v0.12.8 — اتچ از بایت‌های آماده (ضمیمه پیش از ثبت پذیرش).
+  /// تصویر (png/jpg) با اعتبارسنجی ذخیره می‌شود؛ سایر پسوندها به‌عنوان
+  /// «فایل» ذخیره می‌شوند. خروجی: متن خطا یا null.
+  static Future<String?> attachBytes(
+      int ticketId, List<int> bytes, String ext,
+      {String note = 'مستندات پذیرش'}) async {
+    final fixed = ext.isEmpty ? '.jpg' : ext.toLowerCase();
+    final isImage = fixed == '.jpg' || fixed == '.jpeg' || fixed == '.png';
+    if (isImage) {
+      final (err, _) = await _storeAndRecord(ticketId, bytes, fixed, note);
+      return err;
+    }
+    ticketFolderBase = '$ticketId';
+    final dir = await _dir();
+    await Directory(dir).create(recursive: true);
+    final name = '${DateTime.now().millisecondsSinceEpoch}$fixed';
+    final target = p.join(dir, name);
+    await File(target).writeAsBytes(bytes);
+    final db = await Db.instance();
+    await db.insert('attachments', {
+      'ticket_id': ticketId,
+      'path': target,
+      'kind': 'file',
+      'note': note,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    await AuditRepo.log('attach_add',
+        'فایل $fixed به سفارش #$ticketId اتچ شد (ضمیمه پذیرش)');
+    return null;
+  }
+
   /// حذف اتچ — بند ۱۷ (مدیریت کامل از داخل برنامه)
   static Future<void> delete(int attachId) async {
     final db = await Db.instance();
