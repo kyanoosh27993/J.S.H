@@ -24,7 +24,8 @@ class _FakePathProvider extends PathProviderPlatform {
 
 /// v0.12.4 — تست سرور اتصال موبایل: جفت‌سازی، توکن، جستجوی سفارش و آپلود اتچ
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  // بدون TestWidgetsFlutterBinding — به HTTP واقعی روی localhost نیاز داریم
+  // (binding تست، HttpClient را رهگیری و همه پاسخ‌ها را 400 می‌کند)
   late Directory tempDir;
   late int port;
 
