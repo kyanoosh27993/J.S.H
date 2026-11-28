@@ -61,7 +61,7 @@ class MobileLinkService {
     state.value = MobileLinkState(
       running: running,
       port: port,
-      lanIp: running ? lanIp() : state.value.lanIp,
+      lanIp: running ? _cachedIp : state.value.lanIp,
       pairingCode: _pairingCode,
       devices: _devices.values.toList(),
       log: List<String>.from(_log.take(40)),
@@ -76,13 +76,19 @@ class MobileLinkService {
   }
 
   /// نخستین IPv4 غیر loopback — آدرسی که گوشی باید وارد کند
-  static String? lanIp() {
+  static String? _cachedIp;
+
+  static Future<String?> lanIp() async {
+    if (_cachedIp != null) return _cachedIp;
     try {
       final itfs = await NetworkInterface.list(
           type: InternetAddressType.IPv4, includeLoopback: false);
       for (final itf in itfs) {
         for (final a in itf.addresses) {
-          if (!a.isLoopback) return a.address;
+          if (!a.isLoopback) {
+            _cachedIp = a.address;
+            return _cachedIp;
+          }
         }
       }
     } catch (_) {}
@@ -103,6 +109,7 @@ class MobileLinkService {
     _pairingCode = _newCode();
     final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _server = server;
+    await lanIp();
     _addLog('سرور روی پورت ${server.port} راه‌اندازی شد — کد جفت‌سازی: $_pairingCode');
     server.listen(_handle, onError: (_) {});
   }

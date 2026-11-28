@@ -159,6 +159,7 @@ class _MainShellState extends State<MainShell> {
     _NavItem(Icons.history, 'گزارش فعالیت‌ها',
         permKey: 'page.home',
         sections: ['تاریخچه رویدادها', 'فیلتر عملکرد']),
+    ],
     // v0.12.4 — دسکتاپ: سرور لوکال پورت 3000 و جفت‌سازی گوشی
     if (!Platform.isAndroid)
       _NavItem(Icons.smartphone_rounded, 'اتصال موبایل',
