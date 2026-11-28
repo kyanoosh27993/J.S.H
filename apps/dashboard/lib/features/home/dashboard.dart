@@ -36,6 +36,9 @@ class _DashboardPageState extends State<DashboardPage> {
   int receivable = 0;
   int expiringWarranties = 0;
   List<ChartPoint> statusCounts = [];
+  // v0.12.9 — سفارش‌های بازه فعلی + نام مشتری‌ها برای لیست کلیک‌شدنی نمودار
+  List<Ticket> _statusTickets = [];
+  Map<int, String> _customerNames = {};
   List<ChartPoint> receivableByStatus = [];
   List<ChartPoint> revenueLine = [];
   int dashedFrom = -1;
@@ -136,6 +139,13 @@ class _DashboardPageState extends State<DashboardPage> {
       names[u['id'] as int] =
           dn.isEmpty ? (u['username'] ?? '') as String : dn;
     }
+    // v0.12.9 — نام مشتری هر سفارش برای لیست نمودار
+    final custNames = <int, String>{};
+    try {
+      for (final c in await CustomerRepo.search('')) {
+        custNames[c.id ?? -1] = c.name;
+      }
+    } catch (_) {}
     final works = <int, List<Ticket>>{};
     final lastChange = <int, String>{};
     for (final t in tickets) {
@@ -163,6 +173,9 @@ class _DashboardPageState extends State<DashboardPage> {
         for (final e in counts.entries)
           if (e.value > 0) ChartPoint(e.key, e.value.toDouble()),
       ];
+      // v0.12.9 — برای لیست کلیک‌شدنی هر جزء دونات
+      _statusTickets = tickets;
+      _customerNames = custNames;
       receivableByStatus = [
         for (final e in recv.entries) ChartPoint(e.key, e.value.toDouble()),
       ];
@@ -605,40 +618,67 @@ class _DashboardPageState extends State<DashboardPage> {
   void _showSegmentDialog(String? label) {
     final cfg = AppThemeScope.of(context);
     final p = cfg.palette;
-    if (label == null) {
-      // تپ روی مرکز — جمع کل
-      final total = donutTotal(statusCounts).round();
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: AppText('سفارش‌ها',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: p.textPrimary)),
-          content: AppNumText(
-              'جمع کل سفارش‌های بازه: ${toPersianDigits('$total')}',
-              style: TextStyle(color: p.textPrimary)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('بستن'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-    final pt = statusCounts.firstWhere(
-      (e) => e.label == label,
-      orElse: () => ChartPoint(label, 0),
-    );
+    // v0.12.9 — هر دو مسیر (جزء نمودار و مرکز) لیست سفارش‌ها را نشان می‌دهند؛
+    // کلیک روی هر سفارش مستقیم جزئیات همان سفارش/فاکتور را باز می‌کند.
+    final list = label == null
+        ? _statusTickets
+        : _statusTickets.where((t) => statusLabel(t.status) == label).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: AppText(label,
+        title: AppText(label == null
+                ? 'سفارش‌ها — همه وضعیت‌ها (${toPersianDigits('${list.length}')})'
+                : '$label (${toPersianDigits('${list.length}')})',
             style: TextStyle(
                 fontWeight: FontWeight.bold, color: p.textPrimary)),
-        content: AppNumText('تعداد: ${toPersianDigits('${pt.value.round()}')}',
-            style: TextStyle(color: p.textPrimary)),
+        content: SizedBox(
+          width: 380,
+          height: 420,
+          child: list.isEmpty
+              ? Center(
+                  child: AppText('سفارشی در این وضعیت نیست',
+                      style: TextStyle(
+                          fontSize: 12.5, color: p.textSecondary)),
+                )
+              : ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (ctx, i) {
+                    final t = list[i];
+                    final cname = _customerNames[t.customerId] ?? '—';
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      child: ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.receipt_long, size: 19),
+                        title: AppText(
+                            '${toPersianDigits(t.code)} — $cname',
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold)),
+                        subtitle: AppText(
+                            'پذیرش: ${shamsiDate(t.intakeDate)}'
+                            ' · ${statusLabel(t.status)}',
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                color: p.textSecondary)),
+                        trailing: const Icon(Icons.chevron_left, size: 18),
+                        onTap: () async {
+                          Navigator.of(ctx).pop();
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  TicketDetailPage(ticketId: t.id!),
+                            ),
+                          );
+                          if (mounted) _load();
+                        },
+                      ),
+                    );
+                  },
+                ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -647,6 +687,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
       ),
     );
+    return;
   }
 
   /// کارت «چه کاری در دست چه کاربری است» — بند ۸
