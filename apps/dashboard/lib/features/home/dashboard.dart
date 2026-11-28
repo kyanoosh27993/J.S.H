@@ -5,6 +5,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../core/db/db.dart';
 import '../../core/repos.dart';
 import '../../core/models.dart';
 import '../../core/services/app_session.dart';
@@ -39,6 +40,11 @@ class _DashboardPageState extends State<DashboardPage> {
   // v0.12.9 — سفارش‌های بازه فعلی + نام مشتری‌ها برای لیست کلیک‌شدنی نمودار
   List<Ticket> _statusTickets = [];
   Map<int, String> _customerNames = {};
+  // v0.13.0 — قابل وصول و فاکتورهای بازه برای کارت‌های کلیک‌شدنی
+  List<Ticket> _receivableTickets = [];
+  List<ChartPoint> _receivableByStatusPts = [];
+  List<Map<String, Object?>> _finInvoices = [];
+  String _monthPrefix = '';
   List<ChartPoint> receivableByStatus = [];
   List<ChartPoint> revenueLine = [];
   int dashedFrom = -1;
@@ -122,6 +128,34 @@ class _DashboardPageState extends State<DashboardPage> {
         receivableSum += rem;
       }
     }
+    // v0.13.0 — سفارش‌های دارای مانده قابل وصول (برای کارت کلیک‌شدنی)
+    final recvTickets = tickets.where((t) {
+      if (t.status == 'delivered') return false;
+      final itemsSum = itemSums[t.id] ?? 0;
+      final total = itemsSum > 0 ? itemsSum : t.estimateAmount;
+      return total - (paidSums[t.id] ?? 0) > 0;
+    }).toList();
+    // v0.13.0 — فاکتورهای قطعی غیر ابطالی بازه (برای کارت‌های مالی)
+    List<Map<String, Object?>> finInv = [];
+    try {
+      final db = await Db.instance();
+      final w = <String>["kind = 'final'", "status != 'cancelled'"];
+      final a = <Object?>[];
+      if (fromDate != null) {
+        w.add('issued_at >= ?');
+        a.add(DateTime(fromDate.year, fromDate.month, fromDate.day)
+            .toIso8601String());
+      }
+      if (toDate != null) {
+        w.add('issued_at < ?');
+        final nd = toDate.add(const Duration(days: 1));
+        a.add(DateTime(nd.year, nd.month, nd.day).toIso8601String());
+      }
+      finInv = await db.query('invoices',
+          where: w.join(' AND '),
+          whereArgs: a,
+          orderBy: 'id DESC');
+    } catch (_) {}
     final now = DateTime.now();
     final monthPrefix = '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
@@ -176,6 +210,13 @@ class _DashboardPageState extends State<DashboardPage> {
       // v0.12.9 — برای لیست کلیک‌شدنی هر جزء دونات
       _statusTickets = tickets;
       _customerNames = custNames;
+      // v0.13.0 — داده کارت‌های کلیک‌شدنی
+      _receivableTickets = recvTickets;
+      _receivableByStatusPts = [
+        for (final e in recv.entries) ChartPoint(e.key, e.value.toDouble()),
+      ];
+      _finInvoices = finInv;
+      _monthPrefix = monthPrefix;
       receivableByStatus = [
         for (final e in recv.entries) ChartPoint(e.key, e.value.toDouble()),
       ];
@@ -237,12 +278,14 @@ class _DashboardPageState extends State<DashboardPage> {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _kpi('سفارش‌های باز', openTickets, Icons.work, p.chartColors[0]),
-              _kpi('آماده تحویل', readyTickets, Icons.done_all, p.success),
+              _kpi('سفارش‌های باز', openTickets, Icons.work,
+                  p.chartColors[0], onTap: _showOpenTickets),
+              _kpi('آماده تحویل', readyTickets, Icons.done_all, p.success,
+                  onTap: _showReadyTickets),
               _kpi('تحویل این ماه', deliveredMonth, Icons.local_shipping,
-                  p.chartColors[2]),
+                  p.chartColors[2], onTap: _showDeliveredMonth),
               _kpi('قابل وصول از مشتریان', receivable, Icons.payments,
-                  p.warning, money: true),
+                  p.warning, money: true, onTap: _showReceivable),
               // بند ۱۱ — کارت هشدار گارانتی تپ‌پذیر است
               _kpi('گارانتی‌های در هشدار', expiringWarranties, Icons.verified_user,
                   p.danger, onTap: _showWarrantyDialog),
@@ -281,7 +324,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 _chartCard(
                   'قابل وصول به تفکیک وضعیت',
-                  BarChart(bars: receivableByStatus, height: 235),
+                  BarChart(bars: receivableByStatus,
+                      height: 235,
+                      onBarTap: (label) => _showReceivable(label)),
                   width: 560,
                 ),
               ],
@@ -427,11 +472,11 @@ class _DashboardPageState extends State<DashboardPage> {
               runSpacing: 12,
               children: [
                 _kpi('جمع کل فروش (ناخالص)', f.gross, Icons.storefront,
-                    p.chartColors[0], money: true),
+                    p.chartColors[0], money: true, onTap: _showFinInvoices),
                 _kpi('جمع تخفیف‌ها', f.discounts, Icons.percent, p.warning,
-                    money: true),
+                    money: true, onTap: _showDiscountInvoices),
                 _kpi('فروش خالص', f.net, Icons.account_balance_wallet,
-                    p.success, money: true),
+                    p.success, money: true, onTap: _showFinInvoices),
               ],
             ),
             const SizedBox(height: 14),
@@ -689,6 +734,192 @@ class _DashboardPageState extends State<DashboardPage> {
     );
     return;
   }
+
+  // ═══ v0.13.0 — لیست کلیک‌شدنی سفارش‌ها (مثل هشدار گارانتی) ═══
+  Future<void> _showTicketListDialog(List<Ticket> list, String title) async {
+    final cfg = AppThemeScope.of(context);
+    final p = cfg.palette;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: AppText('$title (${toPersianDigits('${list.length}')})',
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: p.textPrimary)),
+        content: SizedBox(
+          width: 380,
+          height: 420,
+          child: list.isEmpty
+              ? Center(
+                  child: AppText('سفارشی در این وضعیت نیست',
+                      style: TextStyle(
+                          fontSize: 12.5, color: p.textSecondary)),
+                )
+              : ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (ctx, i) {
+                    final t = list[i];
+                    final cname = _customerNames[t.customerId] ?? '—';
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      child: ListTile(
+                        dense: true,
+                        leading:
+                            const Icon(Icons.receipt_long, size: 19),
+                        title: AppText(
+                            '${toPersianDigits(t.code)} — $cname',
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold)),
+                        subtitle: AppText(
+                            'پذیرش: ${shamsiDate(t.intakeDate)}'
+                            ' · ${statusLabel(t.status)}',
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                color: p.textSecondary)),
+                        trailing:
+                            const Icon(Icons.chevron_left, size: 18),
+                        onTap: () async {
+                          Navigator.of(ctx).pop();
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  TicketDetailPage(ticketId: t.id!),
+                            ),
+                          );
+                          if (mounted) _load();
+                        },
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showOpenTickets() => _showTicketListDialog(
+      _statusTickets.where((t) => t.status != 'delivered').toList(),
+      'سفارش‌های باز');
+
+  void _showReadyTickets() => _showTicketListDialog(
+      _statusTickets.where((t) => t.status == 'ready').toList(),
+      'آماده تحویل');
+
+  void _showDeliveredMonth() => _showTicketListDialog(
+      _statusTickets
+          .where((t) =>
+              t.status == 'delivered' &&
+              t.updatedAt.startsWith(_monthPrefix))
+          .toList(),
+      'تحویل این ماه');
+
+  /// قابل وصول — کل یا یک وضعیت خاص (تپ روی میله نمودار)
+  void _showReceivable([String? statusLabel]) {
+    var list = _receivableTickets;
+    if (statusLabel != null) {
+      list = list
+          .where((t) => statusLabel(t.status) == statusLabel)
+          .toList();
+    }
+    _showTicketListDialog(list, statusLabel ?? 'قابل وصول از مشتریان');
+  }
+
+  // ═══ v0.13.0 — لیست فاکتورهای قطعی بازه (کارت‌های مالی) ═══
+  Future<void> _showInvoiceListDialog(String title,
+      {bool onlyDiscount = false}) async {
+    final cfg = AppThemeScope.of(context);
+    final p = cfg.palette;
+    var list = _finInvoices;
+    if (onlyDiscount) {
+      list = list
+          .where((r) => ((r['discount'] ?? 0) as int? ?? 0) > 0)
+          .toList();
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: AppText('$title (${toPersianDigits('${list.length}')})',
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: p.textPrimary)),
+        content: SizedBox(
+          width: 380,
+          height: 420,
+          child: list.isEmpty
+              ? Center(
+                  child: AppText('سندی در این بازه نیست',
+                      style: TextStyle(
+                          fontSize: 12.5, color: p.textSecondary)),
+                )
+              : ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (ctx, i) {
+                    final r = list[i];
+                    final tid = (r['ticket_id'] ?? 0) as int;
+                    final t = _ticketById[tid];
+                    final number = (r['number'] ?? '') as String;
+                    final total = (r['total'] ?? 0) as int;
+                    final disc = (r['discount'] ?? 0) as int;
+                    final cname = t == null
+                        ? '—'
+                        : (_customerNames[t.customerId] ?? '—');
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      child: ListTile(
+                        dense: true,
+                        leading:
+                            const Icon(Icons.description, size: 19),
+                        title: AppText('$number — $cname',
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold)),
+                        subtitle: AppText(
+                            'مبلغ: ${moneyToman(total)}'
+                            '${disc > 0 ? ' · تخفیف: ${moneyToman(disc)}' : ''}',
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                color: p.textSecondary)),
+                        trailing:
+                            const Icon(Icons.chevron_left, size: 18),
+                        onTap: t == null
+                            ? null
+                            : () async {
+                                Navigator.of(ctx).pop();
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => TicketDetailPage(
+                                        ticketId: t.id!),
+                                  ),
+                                );
+                                if (mounted) _load();
+                              },
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFinInvoices() =>
+      _showInvoiceListDialog('فاکتورهای قطعی بازه');
+
+  void _showDiscountInvoices() =>
+      _showInvoiceListDialog('فاکتورهای دارای تخفیف', onlyDiscount: true);
 
   /// کارت «چه کاری در دست چه کاربری است» — بند ۸
   Widget _userWorkCard() {

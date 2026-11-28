@@ -548,7 +548,10 @@ class _LinePainter extends CustomPainter {
 class BarChart extends StatefulWidget {
   final List<ChartPoint> bars;
   final double height;
-  const BarChart({super.key, required this.bars, this.height = 230});
+  // v0.13.0 — تپ روی هر میله → برچسب همان میله
+  final ValueChanged<String>? onBarTap;
+  const BarChart(
+      {super.key, required this.bars, this.height = 230, this.onBarTap});
 
   @override
   State<BarChart> createState() => _BarChartState();
@@ -572,21 +575,39 @@ class _BarChartState extends State<BarChart> {
         tween: Tween(begin: 0, end: 1),
         duration: Duration(milliseconds: cfg.animations ? 700 : 0),
         curve: Curves.easeOutBack,
-        builder: (_, t, __) => SizedBox(
+        child: SizedBox(
           height: widget.height,
-          child: CustomPaint(
-            painter: _BarPainter(
-              bars: widget.bars,
-              colors: p.chartColors,
-              border: p.border,
-              textPrimary: p.textPrimary,
-              textSecondary: p.textSecondary,
-              numberFont: cfg.effectiveNumberFont,
-              progress: t,
-              hovered: hovered,
-              onHover: (i) => setState(() => hovered = i),
-            ),
-          ),
+          // v0.13.0 — تشخیص میله زیر اشارهگر با همان هندسه painter (padX=6)
+          child: LayoutBuilder(builder: (ctx, cons) {
+            final cw = cons.maxWidth;
+            return GestureDetector(
+              onTapUp: widget.onBarTap == null
+                  ? null
+                  : (ev) {
+                      final n = widget.bars.length;
+                      if (n == 0) return;
+                      const padX = 6.0;
+                      final bw = (cw - padX * 2) / n;
+                      final idx =
+                          ((ev.localPosition.dx - padX) / bw).floor();
+                      if (idx < 0 || idx >= n) return;
+                      widget.onBarTap!(widget.bars[idx].label);
+                    },
+              child: CustomPaint(
+                painter: _BarPainter(
+                  bars: widget.bars,
+                  colors: p.chartColors,
+                  border: p.border,
+                  textPrimary: p.textPrimary,
+                  textSecondary: p.textSecondary,
+                  numberFont: cfg.effectiveNumberFont,
+                  progress: t,
+                  hovered: hovered,
+                  onHover: (i) => setState(() => hovered = i),
+                ),
+              ),
+            );
+          }),
         ),
       ),
     );
