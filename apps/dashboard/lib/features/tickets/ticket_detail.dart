@@ -11,6 +11,7 @@ import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/app_session.dart';
 import '../../core/services/attach_service.dart';
+import '../../core/services/supervisor_service.dart';
 import '../../core/services/delivery_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/utils.dart';

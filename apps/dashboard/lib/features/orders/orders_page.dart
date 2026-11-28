@@ -295,7 +295,7 @@ class _OrdersPageState extends State<OrdersPage> {
           actions: [
             // v0.12.5 — اسکن QR فاکتور با دوربین گوشیِ متصل (سرور پورت 3000)
             StreamBuilder<String>(
-              stream: MobileLinkService.scanEvents,
+              stream: MobileLinkService.scanEvents.stream,
               builder: (ctx, snap) {
                 final got = snap.data?.trim();
                 if (got != null && got.isNotEmpty) {
