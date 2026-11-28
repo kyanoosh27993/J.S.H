@@ -85,13 +85,53 @@ class BackupService {
     return created;
   }
 
+  /// v0.12.5 — آینه افزایشی عکس‌های اتچ‌شده کنار بک‌آپ بانک.
+  /// فایل‌های اتچ هرگز تغییر نمی‌کنند، پس فقط فایل‌های جدید/تغییریافته کپی
+  /// می‌شوند — برای هزاران عکس سریع می‌ماند.
+  static Future<int> mirrorAttachments() async {
+    final docs = await getApplicationDocumentsDirectory();
+    final srcRoot = p.join(docs.path, 'attachments');
+    if (!await Directory(srcRoot).exists()) return 0;
+    final destRoot = p.join(await backupDir(), 'attachments_mirror');
+    var copied = 0;
+    final srcDir = Directory(srcRoot);
+    await for (final e in srcDir.list(recursive: true)) {
+      if (e is! File) continue;
+      final rel = p.relative(e.path, from: srcRoot);
+      final dest = p.join(destRoot, rel);
+      final df = File(dest);
+      if (await df.exists()) {
+        final s1 = await e.length();
+        final s2 = await df.length();
+        final t1 = (await e.lastModified()).millisecondsSinceEpoch;
+        final t2 = (await df.lastModified()).millisecondsSinceEpoch;
+        if (s1 == s2 && t1 <= t2) continue;
+      }
+      await df.parent.create(recursive: true);
+      try {
+        await e.copy(dest);
+        copied++;
+      } catch (_) {}
+    }
+    return copied;
+  }
+
   /// بک‌آپ دستی با نام و پیام نتیجه
-  static Future<String> manualBackup() => _make('manual');
+  static Future<String> manualBackup() async {
+    final dbPath = await _make('manual');
+    try {
+      await mirrorAttachments();
+    } catch (_) {}
+    return dbPath;
+  }
 
   /// بک‌آپ اتوماتیک هنگام خروج — بی‌صدا؛ خطا نادیده گرفته می‌شود
   static Future<void> autoBackup() async {
     try {
       await _make('auto');
+      try {
+        await mirrorAttachments();
+      } catch (_) {}
       await cleanupAutoBackups();
     } catch (_) {}
   }

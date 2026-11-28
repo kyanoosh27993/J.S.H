@@ -53,6 +53,10 @@ class MobileLinkService {
   static final Map<String, String> _devices = <String, String>{}; // token → name
   static final List<String> _log = <String>[];
 
+  /// v0.12.5 — رویدادهای اسکن گوشی برای فرم «باز کردن با شماره / QR»
+  static final StreamController<String> scanEvents =
+      StreamController<String>.broadcast();
+
   static final ValueNotifier<MobileLinkState> state =
       ValueNotifier<MobileLinkState>(const MobileLinkState(
           running: false, port: 3000, pairingCode: ''));
@@ -103,9 +107,30 @@ class MobileLinkService {
     return List.generate(32, (_) => r.nextInt(16).toRadixString(16)).join();
   }
 
+  /// بازیابی توکن‌های جفت‌شده از اجرای قبلی — جفت‌سازی یک‌بار برای همیشه (v0.12.5)
+  static Future<void> _loadTokens() async {
+    try {
+      final raw = await SettingsRepo.get('mobile_link_tokens', '');
+      if (raw.isEmpty) return;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      m.forEach((t, name) {
+        _tokens.add(t);
+        _devices[t] = name.toString();
+      });
+    } catch (_) {}
+  }
+
+  static Future<void> _persistTokens() async {
+    try {
+      await SettingsRepo.set(
+          'mobile_link_tokens', jsonEncode(_devices));
+    } catch (_) {}
+  }
+
   /// شروع سرور — [port] پیش‌فرض 3000؛ در تست‌ها 0 (پورت تصادفی)
   static Future<void> start({int port = 3000}) async {
     if (_server != null) return;
+    await _loadTokens();
     _pairingCode = _newCode();
     final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _server = server;
@@ -187,7 +212,8 @@ class MobileLinkService {
     final token = _newToken();
     _tokens.add(token);
     _devices[token] = name;
-    _addLog('جفت‌سازی موفق: $name');
+    await _persistTokens();
+    _addLog('جفت‌سازی موفق: $name — از این پس خودکار وصل می‌شود');
     _json(req, 200, {'ok': true, 'token': token, 'version': AppInfo.version});
   }
 
@@ -240,6 +266,7 @@ class MobileLinkService {
   static void _scan(HttpRequest req) async {
     final q = (req.uri.queryParameters['q'] ?? '').trim();
     _addLog('اسکن از گوشی: $q');
+    scanEvents.add(q); // v0.12.5 — برای فرم QR ویندوز
     _search(req);
   }
 

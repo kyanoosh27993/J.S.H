@@ -4,6 +4,8 @@
 /// توکن با PC. فقط با PC فعالِ در همان شبکه، برنامه به صفحه ورود می‌رود (بند ۴).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
@@ -24,11 +26,18 @@ class PairGate extends StatefulWidget {
 class _PairGateState extends State<PairGate> {
   PairResult? _last;
   bool _checking = true;
+  Timer? _retry;
 
   @override
   void initState() {
     super.initState();
     _check();
+  }
+
+  @override
+  void dispose() {
+    _retry?.cancel();
+    super.dispose();
   }
 
   Future<void> _check() async {
@@ -38,6 +47,14 @@ class _PairGateState extends State<PairGate> {
       _last = r;
       _checking = false;
     });
+    // v0.12.5 — اگر قبلاً جفت شده، هر ۵ ثانیه خودکار تلاش می‌کنیم تا PC آنلاین
+    // شود؛ کاربر دیگر هیچ‌وقت کد جفت‌سازی را دوباره وارد نمی‌کند.
+    if (!r.ok && r.error.contains('اتصال به PC برقرار نشد')) {
+      _retry?.cancel();
+      _retry = Timer(const Duration(seconds: 5), () {
+        if (mounted) _check();
+      });
+    }
   }
 
   @override

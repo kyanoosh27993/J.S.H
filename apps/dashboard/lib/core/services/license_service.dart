@@ -10,6 +10,7 @@ import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
 import '../constants.dart';
+import '../repos.dart';
 import '../utils.dart';
 
 class LicenseLockedException implements Exception {
@@ -160,15 +161,24 @@ class LicenseService {
   }
 
   /// گام‌های شروع: اگر شمارنده از حد گذشته باشد، قفل کامل
+  /// سقف نصب مؤثر — از پیلود کد فعال‌سازی (maxReinstalls)؛ صفر یعنی پیش‌فرض برنامه.
+  /// v0.12.5: عدد تعیین‌شده در مولد لایسنس حالا واقعاً اعمال می‌شود.
+  static Future<int> maxLimit() async {
+    final v = int.tryParse(
+        await SettingsRepo.get('license_max_reinstalls', ''));
+    return (v != null && v > 0) ? v : AppInfo.maxInstalls;
+  }
+
   static Future<void> guard(int dbInstallCount) async {
-    if (dbInstallCount > AppInfo.maxInstalls) {
+    if (dbInstallCount > await maxLimit()) {
       throw LicenseLockedException(dbInstallCount);
     }
   }
 
-  static String lockMessage(int installCount) {
-    final remain = AppInfo.maxInstalls - installCount + 1;
-    final maxFa = toPersianDigits('${AppInfo.maxInstalls}');
+  static Future<String> lockMessage(int installCount) async {
+    final max = await maxLimit();
+    final remain = max - installCount + 1;
+    final maxFa = toPersianDigits('$max');
     return 'این نسخه از برنامه قبلاً ${toPersianDigits('$installCount')} بار روی این رایانه نصب شده است و سهمیه نصب '
         '($maxFa بار) به پایان رسیده است.\n'
         'برای نصب دوباره باید با پشتیبانی برنامه تماس بگیرید.\n'

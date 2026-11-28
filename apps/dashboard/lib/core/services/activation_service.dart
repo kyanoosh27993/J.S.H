@@ -176,6 +176,8 @@ class ActivationService {
         return 'این کد برای نسخه دیگری از برنامه است.';
     }
     state.activationCode = code;
+    // v0.12.5 — سقف نصب داخل کد لایسنس ذخیره می‌شود و مرجع واقعی است
+    await SettingsRepo.set('license_max_reinstalls', '${r.maxReinstalls}');
     state.activationExpiry = r.expiry?.toIso8601String() ?? '';
     state.activatedAt = today.toIso8601String();
     state.lastSeenDate = DateTime(today.year, today.month, today.day)

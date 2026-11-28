@@ -179,45 +179,19 @@ class _RootGateState extends State<_RootGate> {
       );
     }
 
-    // ۲) دروازه گزارش نصب (N-03)
-    switch (s.gateState()) {
-      case GateState.waitingConsent:
-        return OnboardingWizard(session: s, onDone: () => setState(() {}));
-      case GateState.queueing:
-        return BlockedPage(
-          title: 'گزارش فعال‌سازی هنوز ثبت نشده است',
-          message:
-              'برای تکمیل فعال‌سازی، ویزارد راه‌اندازی اول را کامل کنید تا گزارش '
-              'فعال‌سازی روی همین دستگاه ثبت شود (${AppInfo.projectId}).\n'
-              'تا ثبت این گزارش، برنامه راه‌اندازی نمی‌شود.',
-          showRetry: true,
-          onRetry: () => setState(() {}),
-        );
-      case GateState.deadlinePassed:
-        return BlockedPage(
-          title: 'گزارش فعال‌سازی هنوز ثبت نشده است',
-          message:
-              'بیش از ۳۰ روز از نصب گذشته است و گزارش فعال‌سازی هنوز روی این دستگاه ثبت نشده است.\n'
-              'ویزارد راه‌اندازی را کامل کنید؛ گزارش فقط به‌صورت محلی ذخیره می‌شود.\n'
-              'تا انجام این کار، برنامه راه‌اندازی نخواهد شد.',
-          showRetry: true,
-          onRetry: () => setState(() {}),
-        );
-      case GateState.ok:
-        // فاز ۱ — بدون کد فعال‌سازی برنامه اجرا نمی‌شود (بند ۴)
-        if (s.activationStatus == ActivationStatus.notActivated) {
-          return ActivationPage(session: s, onActivated: () => setState(() {}));
-        }
-        // فاز ۲ — دروازه ورود کاربر (بند ۸): بدون احراز هویت، شل باز نمی‌شود
-        if (s.currentUser == null) {
-          return LoginPage(session: s, onLoggedIn: () => setState(() {}));
-        }
-        return MainShell(
-          session: s,
-          expiryNoticeDays: _expiryNoticeDays(),
-          onLogout: () => setState(() {}),
-        );
+    // v0.12.5 — دروازه گزارش نصب/ایمیل (N-03) کلاً حذف شد؛ فعال‌سازی فقط با کد
+    // (بند ۴). فعال‌سازی با کد و سپس ورود کاربر (بند ۸):
+    if (s.activationStatus == ActivationStatus.notActivated) {
+      return ActivationPage(session: s, onActivated: () => setState(() {}));
     }
+    if (s.currentUser == null) {
+      return LoginPage(session: s, onLoggedIn: () => setState(() {}));
+    }
+    return MainShell(
+      session: s,
+      expiryNoticeDays: _expiryNoticeDays(),
+      onLogout: () => setState(() {}),
+    );
   }
 }
 

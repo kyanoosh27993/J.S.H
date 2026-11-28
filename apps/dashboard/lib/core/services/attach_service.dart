@@ -303,7 +303,8 @@ h2{color:#1e293b}.lbl{color:#334155;font-size:14px;font-weight:bold}
 <p>سفارش: ${'$ticketId'} — عکس را بگیرید یا از گالری انتخاب کنید.</p>
 <div class="lbl">کد فعال‌سازی برنامه رایانه را وارد کنید</div>
 <input type="text" id="lic" placeholder="JSH-XXXXXX-XXXXXX-..." autocomplete="off">
-<input type="file" id="photo" name="photo" accept="image/*" capture="environment">
+<input type="file" id="photo" name="photo" accept="image/*">
+<p style="color:#555;font-size:13px">از گالری انتخاب کنید یا با دوربین عکس بگیرید — هر دو ممکن است.</p>
 <button type="button" onclick="send()">ارسال عکس</button>
 <div id="result"></div>
 <script>

@@ -587,8 +587,107 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
           ? Text('گارانتی: ${toPersianDigits('${i.warrantyMonths}')} ماه',
               style: const TextStyle(color: Colors.green))
           : null,
-      trailing: Text(moneyToman(i.price * i.qty)),
+      // v0.12.5 — ویرایش و حذف قلم ثبت‌شده (اصلاح اشتباه)
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(moneyToman(i.price * i.qty)),
+        const SizedBox(width: 8),
+        if (i.id != null) ...[
+          IconButton(
+              tooltip: 'ویرایش قلم',
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              onPressed: () => _editItem(i)),
+          IconButton(
+              tooltip: 'حذف قلم',
+              icon: const Icon(Icons.delete_outline,
+                  size: 18, color: Colors.red),
+              onPressed: () => _deleteItem(i)),
+        ],
+      ]),
     );
+  }
+
+  /// v0.12.5 — ویرایش شرح/تعداد/قیمت قلم
+  Future<void> _editItem(TicketItem i) async {
+    final descCtrl = TextEditingController(text: i.description);
+    final qtyCtrl = TextEditingController(text: '${i.qty}');
+    final priceCtrl = TextEditingController(text: '${i.price}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('ویرایش قلم'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+                controller: descCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'شرح قلم', border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(
+                controller: qtyCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: 'تعداد', border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(
+                controller: priceCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: 'قیمت واحد (تومان)', border: OutlineInputBorder())),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('انصراف')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('ذخیره')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final desc = descCtrl.text.trim();
+    final qty = int.tryParse(toEnglishDigits(qtyCtrl.text.trim())) ?? i.qty;
+    final price =
+        int.tryParse(toEnglishDigits(priceCtrl.text.trim())) ?? i.price;
+    if (desc.isEmpty || qty < 1 || price < 0) return;
+    i.description = desc;
+    i.qty = qty;
+    i.price = price;
+    await TicketItemRepo.update(i);
+    await AuditRepo.log('item_edit',
+        'ویرایش قلم #${i.id} سفارش #${widget.ticketId}');
+    await _load();
+  }
+
+  /// v0.12.5 — حذف قلم با تأیید
+  Future<void> _deleteItem(TicketItem i) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('حذف قلم'),
+          content: Text(
+              '«${i.description} × ${i.qty}» حذف شود؟ این عملیات بازگشت‌ناپذیر است.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('انصراف')),
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('حذف')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || i.id == null) return;
+    await TicketItemRepo.delete(i.id!);
+    await AuditRepo.log('item_delete',
+        'حذف قلم #${i.id} (${i.description}) سفارش #${widget.ticketId}');
+    await _load();
   }
 
   Widget _kv(String k, String v, {bool highlight = false}) => Padding(

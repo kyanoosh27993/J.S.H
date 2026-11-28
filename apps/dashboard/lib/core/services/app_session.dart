@@ -125,7 +125,8 @@ class AppSession {
       await LicenseService.guard(count);
     } on LicenseLockedException catch (e) {
       locked = true;
-      lockReason = LicenseService.lockMessage(e.installCount);
+      lockReason =
+          await LicenseService.lockMessage(e.installCount);
       return;
     }
 

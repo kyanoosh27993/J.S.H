@@ -215,6 +215,8 @@ class _HomePageState extends State<HomePage>
       deviceId: device,
       maxReinstalls: maxRe.clamp(0, 255),
     );
+    // v0.12.5 — خطای پایگاه‌داده (مثلاً روی اندروید) دیگر خاموش نیست
+    try {
     await CodeDb.insertCode({
       'code': code,
       'device_short': ActivationCodec.shortDeviceId(device),
@@ -225,6 +227,11 @@ class _HomePageState extends State<HomePage>
       'installs_reported': 0,
       'created_at': DateTime.now().toIso8601String(),
     });
+    } catch (e) {
+      setState(() => lastError =
+          'ذخیره کد در پایگاه‌داده ناموفق بود اما کد ساخته شد:\n$code\n\nخطا: $e');
+      return;
+    }
     setState(() {
       lastCode = code;
       _tabs.index = 0;

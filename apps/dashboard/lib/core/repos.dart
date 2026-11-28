@@ -493,6 +493,13 @@ class TicketItemRepo {
     return rows.map(TicketItem.fromMap).toList();
   }
 
+  static Future<void> update(TicketItem i) async {
+    // v0.12.5 — ویرایش قلم ثبت‌شده (اصلاح اشتباه)
+    final db = await Db.instance();
+    await db.update('ticket_items', i.toMap(),
+        where: 'id = ?', whereArgs: [i.id]);
+  }
+
   static Future<void> delete(int id) async {
     final db = await Db.instance();
     await db.delete('ticket_items', where: 'id = ?', whereArgs: [id]);

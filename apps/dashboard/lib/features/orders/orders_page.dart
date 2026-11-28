@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../core/services/mobile_link_service.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/a5_receipt_service.dart';
@@ -292,6 +293,35 @@ class _OrdersPageState extends State<OrdersPage> {
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
           actions: [
+            // v0.12.5 — اسکن QR فاکتور با دوربین گوشیِ متصل (سرور پورت 3000)
+            StreamBuilder<String>(
+              stream: MobileLinkService.scanEvents,
+              builder: (ctx, snap) {
+                final got = snap.data?.trim();
+                if (got != null && got.isNotEmpty) {
+                  // اسکن رسید → بستن دیالوگ با همان کد
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (ctx.mounted) Navigator.pop(ctx, got);
+                  });
+                }
+                return TextButton.icon(
+                  onPressed: null,
+                  icon: Icon(
+                      got == null || got.isEmpty
+                          ? Icons.phonelink_ring
+                          : Icons.check_circle,
+                      size: 18,
+                      color: got == null || got.isEmpty
+                          ? null
+                          : Colors.green),
+                  label: Text(
+                      got == null || got.isEmpty
+                          ? 'منتظر اسکن QR از دوربین گوشی…'
+                          : 'دریافت شد: $got',
+                      style: const TextStyle(fontSize: 12)),
+                );
+              },
+            ),
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('انصراف')),

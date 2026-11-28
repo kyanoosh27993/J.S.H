@@ -62,9 +62,10 @@ class _ScannerPageState extends State<ScannerPage> {
       return;
     }
     final picker = ImagePicker();
+    // v0.12.5 — بدون پارامتر کیفیت: فایل اصلی بدون فشرده‌سازی/افت کیفیت ارسال می‌شود
     final XFile? f = fromCamera
-        ? await picker.pickImage(source: ImageSource.camera, imageQuality: 80)
-        : await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+        ? await picker.pickImage(source: ImageSource.camera)
+        : await picker.pickImage(source: ImageSource.gallery);
     if (f == null || !mounted) return;
     setState(() => _busy = true);
     final ok = await PairService.uploadAttachment(
