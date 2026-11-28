@@ -15,6 +15,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../core/repos.dart';
 import '../../core/services/a5_receipt_service.dart';
@@ -63,7 +64,9 @@ class _IntakePageState extends State<IntakePage> {
   DateTime? pickedIntake;
   String dueTime = '18:00';
   final Set<String> accessories = {};
-  List<String> accessoryOptions = [];
+  // v0.12.8 — مقدار اولیه فوری: چیپ‌ها از همان اولین فریم هستند و بعد از
+  // بارگذاری تنظیمات، با لیست سفارشی به‌روز می‌شوند (ListView تنبل نباید خالی بماند)
+  List<String> accessoryOptions = Accessory.all;
   String lockPattern = '';
 
   // فاز ۲ — واگذاری سفارش برای تشخیص (بند ۸)
