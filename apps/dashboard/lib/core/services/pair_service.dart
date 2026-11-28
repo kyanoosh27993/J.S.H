@@ -177,8 +177,12 @@ class PairService {
     final req = await hc.postUrl(Uri.parse(url));
     final payload = jsonEncode(data);
     req.headers.contentType = ContentType.json;
-    req.headers.contentLength = payload.length;
-    req.write(payload);
+    // v0.12.6 — طول بر حسب بایت UTF-8؛ متن فارسی (مثل «اندروید ۱۵») بایت
+    // بیشتری از کاراکتر دارد و contentLength=n.length باعث
+    // «Content size exceeds specified contentLength» می‌شد.
+    final bytes = utf8.encode(payload);
+    req.headers.contentLength = bytes.length;
+    req.add(bytes);
     final res = await req.close();
     final body = jsonDecode(await res.transform(utf8.decoder).join());
     return {'status': res.statusCode, 'body': body};
