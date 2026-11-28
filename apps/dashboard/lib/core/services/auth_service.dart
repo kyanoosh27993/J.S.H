@@ -43,6 +43,7 @@ class PermPages {
     {'key': 'page.settings', 'label': 'تنظیمات'},
     {'key': 'page.theme', 'label': 'تم و ظاهر'},
     {'key': 'page.support', 'label': 'پشتیبانی'},
+    {'key': 'page.mobilelink', 'label': 'اتصال موبایل / اسکن'},
   ];
 
   static String labelOf(String key) => all

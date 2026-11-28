@@ -2,8 +2,10 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' show AppExitResponse;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:local_notifier/local_notifier.dart';
 
@@ -14,9 +16,11 @@ import 'core/services/backup_service.dart';
 import 'core/services/install_report_service.dart';
 import 'core/services/reminder_service.dart';
 import 'features/activation/activation_page.dart';
+import 'features/activation/pair_page.dart';
 import 'features/onboarding/onboarding.dart';
 import 'features/shell/shell.dart';
 import 'features/users/login_page.dart';
+import 'features/mobile_link/mobile_link_page.dart';
 import 'core/theme/theme_config.dart';
 import 'features/support/blocked.dart';
 
@@ -160,6 +164,12 @@ class _RootGateState extends State<_RootGate> {
         ),
       );
     }
+    // v0.12.4 — اندروید: روند جدید فعال‌سازی. گوشی مستقل فعال نمی‌شود؛
+    // با جفت‌سازی به PC فعالِ در شبکه لوکال پورت 3000 راه‌اندازی می‌شود (بند ۴)
+    if (!kIsWeb && Platform.isAndroid && !s.locked) {
+      return PairGate(session: s, onDone: () => setState(() {}));
+    }
+
     // ۱) قفل لایسنس (F-09): نصب چهارم → فقط پیام پشتیبانی
     if (s.locked) {
       return BlockedPage(
