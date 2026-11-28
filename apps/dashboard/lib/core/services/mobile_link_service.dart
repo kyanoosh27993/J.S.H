@@ -18,10 +18,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'db/db.dart';
-import 'models.dart';
+import '../db/db.dart';
+import '../models.dart';
 import '../repos.dart';
-import 'constants.dart';
+import '../constants.dart';
 import 'activation_service.dart';
 import 'app_session.dart';
 

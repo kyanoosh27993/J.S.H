@@ -9,7 +9,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
-import 'constants.dart';
+import '../constants.dart';
 import '../repos.dart';
 
 /// نتیجه اتصال به PC

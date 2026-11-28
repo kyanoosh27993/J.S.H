@@ -159,18 +159,16 @@ class _MainShellState extends State<MainShell> {
     _NavItem(Icons.history, 'گزارش فعالیت‌ها',
         permKey: 'page.home',
         sections: ['تاریخچه رویدادها', 'فیلتر عملکرد']),
-    ],
-    if (!Platform.isAndroid) {
-      // v0.12.4 — سرور لوکال پورت 3000 و جفت‌سازی گوشی (فقط دسکتاپ)
-      _items.add(_NavItem(Icons.smartphone_rounded, 'اتصال موبایل',
+    // v0.12.4 — دسکتاپ: سرور لوکال پورت 3000 و جفت‌سازی گوشی
+    if (!Platform.isAndroid)
+      _NavItem(Icons.smartphone_rounded, 'اتصال موبایل',
           permKey: 'page.mobilelink',
-          sections: ['شبکه لوکال پورت 3000', 'کد جفت‌سازی', 'گوشی‌های متصل']));
-    } else {
-      // v0.12.4 — دوربین آنلاین گوشی: اسکن بارکد/QR، عکس‌برداری و اتچ اسناد
-      _items.add(_NavItem(Icons.qr_code_scanner_rounded, 'اسکن و دوربین',
+          sections: ['شبکه لوکال پورت 3000', 'کد جفت‌سازی', 'گوشی‌های متصل']),
+    // v0.12.4 — اندروید: دوربین آنلاین (اسکن بارکد/QR، عکس، اتچ اسناد)
+    if (Platform.isAndroid)
+      _NavItem(Icons.qr_code_scanner_rounded, 'اسکن و دوربین',
           permKey: 'page.mobilelink',
-          sections: ['اسکن بارکد/QR', 'عکس برای سفارش', 'انتخاب سند']));
-    }
+          sections: ['اسکن بارکد/QR', 'عکس برای سفارش', 'انتخاب سند']),
   ];
 
   /// فهرست نمایان برای کاربر جاری — فاز ۲ (دسترسی تفکیکی، بند ۸)
