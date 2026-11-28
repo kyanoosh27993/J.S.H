@@ -78,7 +78,7 @@ class MobileLinkService {
   /// نخستین IPv4 غیر loopback — آدرسی که گوشی باید وارد کند
   static String? lanIp() {
     try {
-      final itfs = NetworkInterface.list(
+      final itfs = await NetworkInterface.list(
           type: InternetAddressType.IPv4, includeLoopback: false);
       for (final itf in itfs) {
         for (final a in itf.addresses) {

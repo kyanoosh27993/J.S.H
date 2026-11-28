@@ -104,9 +104,7 @@ void main() {
         status: 'intake',
         accessories: const [],
         termsAccepted: true,
-        signaturePath: '',
-        createdAt: DateTime.now().toIso8601String(),
-        updatedAt: DateTime.now().toIso8601String());
+        signaturePath: '');
     await TicketRepo.insert(ticket);
 
     final hc = HttpClient();

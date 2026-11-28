@@ -151,7 +151,7 @@ class PairService {
   }
 
   // ── کلاینت HTTP کمکی ──
-  static Future<Map<String, Object?>> _get(String url) async {
+  static Future<Map<String, dynamic>> _get(String url) async {
     final hc = HttpClient()..connectionTimeout = const Duration(seconds: 6);
     final req = await hc.getUrl(Uri.parse(url));
     final res = await req.close();
@@ -159,7 +159,7 @@ class PairService {
     return {'status': res.statusCode, 'body': body};
   }
 
-  static Future<Map<String, Object?>> _post(
+  static Future<Map<String, dynamic>> _post(
       String url, Map<String, Object?> data) async {
     final hc = HttpClient()..connectionTimeout = const Duration(seconds: 6);
     final req = await hc.postUrl(Uri.parse(url));
