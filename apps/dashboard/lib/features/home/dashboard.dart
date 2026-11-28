@@ -44,6 +44,7 @@ class _DashboardPageState extends State<DashboardPage> {
   List<Ticket> _receivableTickets = [];
   List<ChartPoint> _receivableByStatusPts = [];
   List<Map<String, Object?>> _finInvoices = [];
+  Map<int, Ticket> _ticketById = {};
   String _monthPrefix = '';
   List<ChartPoint> receivableByStatus = [];
   List<ChartPoint> revenueLine = [];
@@ -141,14 +142,15 @@ class _DashboardPageState extends State<DashboardPage> {
       final db = await Db.instance();
       final w = <String>["kind = 'final'", "status != 'cancelled'"];
       final a = <Object?>[];
-      if (fromDate != null) {
+      final from = fromDate;
+      final to = toDate;
+      if (from != null) {
         w.add('issued_at >= ?');
-        a.add(DateTime(fromDate.year, fromDate.month, fromDate.day)
-            .toIso8601String());
+        a.add(DateTime(from.year, from.month, from.day).toIso8601String());
       }
-      if (toDate != null) {
+      if (to != null) {
         w.add('issued_at < ?');
-        final nd = toDate.add(const Duration(days: 1));
+        final nd = to.add(const Duration(days: 1));
         a.add(DateTime(nd.year, nd.month, nd.day).toIso8601String());
       }
       finInv = await db.query('invoices',
@@ -216,6 +218,7 @@ class _DashboardPageState extends State<DashboardPage> {
         for (final e in recv.entries) ChartPoint(e.key, e.value.toDouble()),
       ];
       _finInvoices = finInv;
+      _ticketById = {for (final t in allTickets) t.id!: t};
       _monthPrefix = monthPrefix;
       receivableByStatus = [
         for (final e in recv.entries) ChartPoint(e.key, e.value.toDouble()),
@@ -821,14 +824,14 @@ class _DashboardPageState extends State<DashboardPage> {
       'تحویل این ماه');
 
   /// قابل وصول — کل یا یک وضعیت خاص (تپ روی میله نمودار)
-  void _showReceivable([String? statusLabel]) {
+  void _showReceivable([String? statusTitle]) {
     var list = _receivableTickets;
-    if (statusLabel != null) {
+    if (statusTitle != null) {
       list = list
-          .where((t) => statusLabel(t.status) == statusLabel)
+          .where((t) => statusLabel(t.status) == statusTitle)
           .toList();
     }
-    _showTicketListDialog(list, statusLabel ?? 'قابل وصول از مشتریان');
+    _showTicketListDialog(list, statusTitle ?? 'قابل وصول از مشتریان');
   }
 
   // ═══ v0.13.0 — لیست فاکتورهای قطعی بازه (کارت‌های مالی) ═══

@@ -575,7 +575,7 @@ class _BarChartState extends State<BarChart> {
         tween: Tween(begin: 0, end: 1),
         duration: Duration(milliseconds: cfg.animations ? 700 : 0),
         curve: Curves.easeOutBack,
-        child: SizedBox(
+        builder: (_, t, __) => SizedBox(
           height: widget.height,
           // v0.13.0 — تشخیص میله زیر اشارهگر با همان هندسه painter (padX=6)
           child: LayoutBuilder(builder: (ctx, cons) {
